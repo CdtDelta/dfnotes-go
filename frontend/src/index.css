@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-scheme: dark;
+  --select-bg: #1f2937;    /* gray-800 */
+  --select-text: #f3f4f6;  /* gray-100 */
+  --option-bg: #1f2937;    /* gray-800 */
+  --option-text: #f3f4f6;  /* gray-100 */
+}
+
+@layer base {
+  body {
+    @apply bg-gray-900 text-gray-100 antialiased;
+    font-family: 'Nunito', system-ui, -apple-system, sans-serif;
+  }
+
+  select {
+    color-scheme: var(--color-scheme);
+    background-color: var(--select-bg);
+    color: var(--select-text);
+  }
+
+  select option {
+    background-color: var(--option-bg);
+    color: var(--option-text);
+  }
+}
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/nunito-v16-latin-regular.woff2') format('woff2');
+}
