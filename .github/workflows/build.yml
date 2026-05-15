@@ -1,0 +1,184 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-linux:
+    name: Build Linux (amd64)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            pkg-config \
+            build-essential \
+            libglib2.0-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build
+        run: wails build -tags webkit2_41 -platform linux/amd64
+
+      - name: Package Linux binary
+        run: |
+          cd build/bin
+          tar -czf dfnotes-go-linux-amd64.tar.gz dfnotes-go
+          sha256sum dfnotes-go-linux-amd64.tar.gz > dfnotes-go-linux-amd64.tar.gz.sha256
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfnotes-go-linux-amd64
+          path: |
+            build/bin/dfnotes-go-linux-amd64.tar.gz
+            build/bin/dfnotes-go-linux-amd64.tar.gz.sha256
+
+  build-windows:
+    name: Build Windows (amd64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build
+        run: wails build -platform windows/amd64
+
+      - name: Package Windows binary
+        shell: pwsh
+        run: |
+          cd build/bin
+          Compress-Archive -Path dfnotes-go.exe -DestinationPath dfnotes-go-windows-amd64.zip
+          $hash = (Get-FileHash dfnotes-go-windows-amd64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  dfnotes-go-windows-amd64.zip" | Out-File dfnotes-go-windows-amd64.zip.sha256 -Encoding utf8
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfnotes-go-windows-amd64
+          path: |
+            build/bin/dfnotes-go-windows-amd64.zip
+            build/bin/dfnotes-go-windows-amd64.zip.sha256
+
+  build-macos:
+    name: Build macOS (arm64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build
+        run: wails build -platform darwin/arm64
+
+      - name: Package macOS binary
+        run: |
+          cd build/bin
+          tar -czf dfnotes-go-macos-arm64.tar.gz dfnotes-go.app
+          shasum -a 256 dfnotes-go-macos-arm64.tar.gz > dfnotes-go-macos-arm64.tar.gz.sha256
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfnotes-go-macos-arm64
+          path: |
+            build/bin/dfnotes-go-macos-arm64.tar.gz
+            build/bin/dfnotes-go-macos-arm64.tar.gz.sha256
+
+  release:
+    name: Create Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          find . -name "*.tar.gz" -o -name "*.zip" | sort | while read f; do
+            sha256sum "$f" | sed 's|.*/||'
+          done > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: dfnotes-go ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/dfnotes-go-linux-amd64/dfnotes-go-linux-amd64.tar.gz
+            artifacts/dfnotes-go-windows-amd64/dfnotes-go-windows-amd64.zip
+            artifacts/dfnotes-go-macos-arm64/dfnotes-go-macos-arm64.tar.gz
+            artifacts/SHA256SUMS.txt
