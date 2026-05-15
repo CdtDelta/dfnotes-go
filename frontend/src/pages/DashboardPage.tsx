@@ -24,7 +24,7 @@ export default function DashboardPage() {
 
     return (
         <div className="min-h-screen p-6">
-            <div className="max-w-6xl mx-auto">
+            <div>
                 <div className="flex items-center justify-between mb-8">
                     <div>
                         <h1 className="text-2xl font-bold">Cases</h1>

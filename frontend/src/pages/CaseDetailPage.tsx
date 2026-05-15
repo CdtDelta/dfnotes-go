@@ -8,6 +8,8 @@ import CaseOverviewTab from '../components/CaseOverviewTab';
 import EvidenceTab from '../components/EvidenceTab';
 import EvidenceNotesTab from '../components/EvidenceNotesTab';
 import MasterNotesTab from '../components/MasterNotesTab';
+import IOCSummaryTab from '../components/IOCSummaryTab';
+import TimelineTab from '../components/TimelineTab';
 import ErrorMessage from '../components/ErrorMessage';
 
 type PageState = 'loading' | 'locked' | 'unlocked';
@@ -81,6 +83,19 @@ export default function CaseDetailPage() {
         setActiveTab(`evidence-notes-${evidenceItemId}`);
     }, []);
 
+    const handleNavigate = useCallback((tab: string, blockId?: string) => {
+        setActiveTab(tab);
+        if (blockId) {
+            setTimeout(() => {
+                const el = document.getElementById(blockId);
+                if (!el) return;
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                el.classList.add('block-target');
+                setTimeout(() => el.classList.remove('block-target'), 1500);
+            }, 80);
+        }
+    }, []);
+
     // Listen for menu Lock Case event
     useEffect(() => {
         const cleanup = EventsOn('menu:lock-case', () => {
@@ -118,12 +133,14 @@ export default function CaseDetailPage() {
         { id: 'overview', label: 'Case Overview' },
         { id: 'evidence', label: 'Evidence' },
         ...evidenceTabs,
+        { id: 'iocs', label: 'IOC Summary' },
+        { id: 'timeline', label: 'Timeline' },
         { id: 'notes', label: 'Master Notes' },
     ];
 
     return (
         <div className="min-h-screen p-6">
-            <div className="max-w-5xl mx-auto">
+            <div>
                 {/* Header */}
                 <div className="mb-6">
                     <button
@@ -229,6 +246,20 @@ export default function CaseDetailPage() {
                                 evidenceItemId={activeTab.replace('evidence-notes-', '')}
                                 evidenceItems={evidenceItems}
                                 onEvidenceClick={handleEvidenceClick}
+                            />
+                        )}
+                        {activeTab === 'iocs' && (
+                            <IOCSummaryTab
+                                caseId={caseData.case_id}
+                                evidenceItems={evidenceItems}
+                                onNavigate={handleNavigate}
+                            />
+                        )}
+                        {activeTab === 'timeline' && (
+                            <TimelineTab
+                                caseId={caseData.case_id}
+                                evidenceItems={evidenceItems}
+                                onNavigate={handleNavigate}
                             />
                         )}
                         {activeTab === 'notes' && (

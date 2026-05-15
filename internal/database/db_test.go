@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	iocpkg "dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 )
 
@@ -74,8 +75,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query schema version: %v", err)
 	}
-	if version != 3 {
-		t.Fatalf("expected version 3, got %d", version)
+	if version != 6 {
+		t.Fatalf("expected version 6, got %d", version)
 	}
 }
 
@@ -493,18 +494,35 @@ func TestIOCRepoCRUD(t *testing.T) {
 	user := createTestUser(t, db)
 	c := createTestCase(t, db, user.UserID)
 
-	repo := NewIOCRepo(db)
+	blockRepo := NewNoteBlockRepo(db)
 	now := time.Now().UTC().Truncate(time.Second)
+	block := &models.NoteBlock{
+		BlockID:       "block-ioc-1",
+		CaseID:        c.CaseID,
+		ContentHash:   "hash-ioc",
+		PrevHash:      "genesis",
+		Signature:     []byte("sig"),
+		EncryptedBody: []byte("body"),
+		AuthorID:      user.UserID,
+		CreatedAt:     now,
+	}
+	if err := blockRepo.Create(ctx, block); err != nil {
+		t.Fatalf("Create block: %v", err)
+	}
 
-	entry := &models.IOCEntry{
+	repo := NewIOCRepo(db)
+	createdAt := now.UTC().Format("2006-01-02T15:04:05Z")
+
+	entry := &iocpkg.IOCEntry{
 		IOCID:           "ioc-1",
 		CaseID:          c.CaseID,
-		IOCType:         models.IOCTypeIPv4,
+		BlockID:         block.BlockID,
+		Type:            iocpkg.IOCTypeIPv4,
 		Value:           "192.168.1.100",
-		Description:     "Suspicious IP",
-		DetectionMethod: models.DetectionManual,
-		CreatedBy:       user.UserID,
-		CreatedAt:       now,
+		Status:          iocpkg.IOCStatusDetected,
+		DetectionMethod: "auto",
+		CreatedAt:       createdAt,
+		UserID:          user.UserID,
 	}
 	if err := repo.Create(ctx, entry); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -517,8 +535,11 @@ func TestIOCRepoCRUD(t *testing.T) {
 	if got.Value != "192.168.1.100" {
 		t.Fatalf("expected IP, got %q", got.Value)
 	}
+	if got.Status != iocpkg.IOCStatusDetected {
+		t.Fatalf("expected detected status, got %q", got.Status)
+	}
 
-	entries, err := repo.ListByCase(ctx, c.CaseID)
+	entries, err := repo.ListByCase(ctx, c.CaseID, false)
 	if err != nil {
 		t.Fatalf("ListByCase: %v", err)
 	}
@@ -526,8 +547,32 @@ func TestIOCRepoCRUD(t *testing.T) {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
 
-	if err := repo.Delete(ctx, "ioc-1"); err != nil {
-		t.Fatalf("Delete: %v", err)
+	if err := repo.UpdateStatus(ctx, "ioc-1", iocpkg.IOCStatusConfirmed, func() *string { s := createdAt; return &s }()); err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+
+	got, _ = repo.GetByID(ctx, "ioc-1")
+	if got.Status != iocpkg.IOCStatusConfirmed {
+		t.Fatalf("expected confirmed, got %q", got.Status)
+	}
+	if got.ConfirmedAt == nil {
+		t.Fatal("expected confirmed_at to be set")
+	}
+
+	byBlock, err := repo.GetByBlock(ctx, block.BlockID)
+	if err != nil {
+		t.Fatalf("GetByBlock: %v", err)
+	}
+	if len(byBlock) != 1 {
+		t.Fatalf("expected 1 block IOC, got %d", len(byBlock))
+	}
+
+	existing, err := repo.GetExistingByBlock(ctx, block.BlockID)
+	if err != nil {
+		t.Fatalf("GetExistingByBlock: %v", err)
+	}
+	if _, ok := existing["ipv4:192.168.1.100"]; !ok {
+		t.Fatal("expected ipv4:192.168.1.100 in existing set")
 	}
 }
 
@@ -538,16 +583,17 @@ func TestTimelineRepoCRUD(t *testing.T) {
 	c := createTestCase(t, db, user.UserID)
 
 	repo := NewTimelineRepo(db)
-	now := time.Now().UTC().Truncate(time.Second)
+	now := time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	eventTime := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second).Format(time.RFC3339)
 
 	entry := &models.TimelineEntry{
-		EntryID:     "tl-1",
-		CaseID:      c.CaseID,
-		EventTime:   now.Add(-24 * time.Hour),
-		Title:       "Initial Compromise",
-		Description: "Phishing email opened",
-		CreatedBy:   user.UserID,
-		CreatedAt:   now,
+		EntryID:          "tl-1",
+		CaseID:           c.CaseID,
+		Timestamp:        eventTime,
+		EventDescription: "Phishing email opened",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		UserID:           user.UserID,
 	}
 	if err := repo.Create(ctx, entry); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -557,8 +603,8 @@ func TestTimelineRepoCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Title != "Initial Compromise" {
-		t.Fatalf("expected title, got %q", got.Title)
+	if got.EventDescription != "Phishing email opened" {
+		t.Fatalf("expected event description, got %q", got.EventDescription)
 	}
 
 	entries, err := repo.ListByCase(ctx, c.CaseID)
@@ -569,8 +615,24 @@ func TestTimelineRepoCRUD(t *testing.T) {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
 
+	got.EventDescription = "Lateral movement detected"
+	got.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if err := repo.Update(ctx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got, _ = repo.GetByID(ctx, "tl-1")
+	if got.EventDescription != "Lateral movement detected" {
+		t.Fatalf("expected updated description, got %q", got.EventDescription)
+	}
+
 	if err := repo.Delete(ctx, "tl-1"); err != nil {
 		t.Fatalf("Delete: %v", err)
+	}
+
+	_, err = repo.GetByID(ctx, "tl-1")
+	if err != models.ErrNotFound {
+		t.Fatalf("expected ErrNotFound after delete, got %v", err)
 	}
 }
 

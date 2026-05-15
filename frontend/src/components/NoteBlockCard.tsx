@@ -1,8 +1,12 @@
-import { TagBlock, UntagBlock } from '../../wailsjs/go/main/App';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { TagBlock, UntagBlock, GetBlockIOCs, GetAttachment } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
-import MarkdownRenderer from './MarkdownRenderer';
 import TagBadge from './TagBadge';
 import TagSelector from './TagSelector';
+import IOCContextMenu from './IOCContextMenu';
+import { renderMarkdown } from '../utils/markdownToHtml';
+import { applyIOCHighlightsToHtml } from '../utils/highlightIOCs';
+import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
 
 interface NoteBlockCardProps {
     block: services.NoteBlockResponse;
@@ -12,6 +16,15 @@ interface NoteBlockCardProps {
     onTagsChanged?: () => void;
 }
 
+interface ContextMenuState {
+    x: number;
+    y: number;
+    iocId: string;
+    iocType: IOCType;
+    iocValue: string;
+    iocStatus: IOCStatus;
+}
+
 export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged }: NoteBlockCardProps) {
     const createdDate = new Date(block.created_at).toLocaleString();
     const shortHash = block.content_hash.substring(0, 12);
@@ -19,6 +32,81 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         ? 'genesis'
         : block.prev_hash.substring(0, 12);
     const tags = block.tags || [];
+
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [iocs, setIocs] = useState<IOCEntry[]>([]);
+    const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+    const fetchIOCs = useCallback(() => {
+        GetBlockIOCs(block.block_id)
+            .then((result) => {
+                const all = (result as IOCEntry[]) || [];
+                // Unix file paths are detected by the backend but excluded from
+                // client-side highlighting because they produce too many false
+                // positives in rendered markdown. Only highlight Windows paths.
+                setIocs(all.filter(
+                    (ioc) => ioc.type !== 'file_path' || /^[A-Za-z]:\\/.test(ioc.value)
+                ));
+            })
+            .catch(() => {});
+    }, [block.block_id]);
+
+    useEffect(() => {
+        fetchIOCs();
+    }, [fetchIOCs]);
+
+    // Render markdown to HTML and apply IOC highlights in one string pass.
+    // dangerouslySetInnerHTML takes React's reconciler out of the subtree entirely,
+    // preventing the insertBefore crashes caused by the previous TreeWalker approach.
+    const highlightedHtml = useMemo(
+        () => applyIOCHighlightsToHtml(renderMarkdown(block.content, evidenceItems || []), iocs),
+        [block.content, evidenceItems, iocs],
+    );
+
+    // Load attachment images that were pre-converted to <img data-attachment-id>.
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const imgs = container.querySelectorAll<HTMLImageElement>('img[data-attachment-id]');
+        for (const img of imgs) {
+            const id = img.dataset.attachmentId!;
+            GetAttachment(caseId, id)
+                .then((resp) => { img.src = `data:${resp.content_type};base64,${resp.data}`; })
+                .catch(() => {});
+        }
+    }, [highlightedHtml, caseId]);
+
+    const handleContextMenu = (e: React.MouseEvent) => {
+        const target = (e.target as HTMLElement).closest<HTMLElement>('.ioc-highlight');
+        if (!target) return;
+        e.preventDefault();
+        const { iocId, iocType, iocValue, iocStatus } = target.dataset;
+        if (!iocId || !iocType || !iocValue || !iocStatus) return;
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            iocId,
+            iocType: iocType as IOCType,
+            iocValue,
+            iocStatus: iocStatus as IOCStatus,
+        });
+    };
+
+    // Evidence link clicks delegated here because the spans inside
+    // dangerouslySetInnerHTML have no React event handlers.
+    const handleClick = (e: React.MouseEvent) => {
+        const span = (e.target as HTMLElement).closest<HTMLElement>('[data-evidence-id]');
+        if (span?.dataset.evidenceId) {
+            onEvidenceClick?.(span.dataset.evidenceId);
+        }
+    };
+
+    const handleStatusChanged = (iocId: string, newStatus: IOCStatus) => {
+        // Optimistic update: setIocs triggers highlightedHtml recomputation which
+        // re-renders the spans with the new status class immediately.
+        setIocs((prev) => prev.map((ioc) => ioc.ioc_id === iocId ? { ...ioc, status: newStatus } : ioc));
+        fetchIOCs();
+    };
 
     const handleTag = async (tagId: string) => {
         try {
@@ -35,7 +123,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     };
 
     return (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <div id={block.block_id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-gray-500">{createdDate}</span>
                 {block.verified ? (
@@ -54,14 +142,13 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                     </span>
                 )}
             </div>
-            <div className="prose prose-invert prose-sm max-w-none mb-3 break-words">
-                <MarkdownRenderer
-                    content={block.content}
-                    caseId={caseId}
-                    evidenceItems={evidenceItems}
-                    onEvidenceClick={onEvidenceClick}
-                />
-            </div>
+            <div
+                ref={containerRef}
+                className="prose prose-invert prose-sm max-w-none mb-3 break-words"
+                onContextMenu={handleContextMenu}
+                onClick={handleClick}
+                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            />
             {/* Tags */}
             <div className="flex items-center gap-1.5 flex-wrap mb-2">
                 {tags.map((tag) => (
@@ -73,6 +160,18 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                 <span title={block.content_hash}>hash: {shortHash}...</span>
                 <span title={block.prev_hash}>prev: {shortPrev}{block.prev_hash !== 'genesis' && '...'}</span>
             </div>
+            {contextMenu && (
+                <IOCContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    iocId={contextMenu.iocId}
+                    iocType={contextMenu.iocType}
+                    iocValue={contextMenu.iocValue}
+                    iocStatus={contextMenu.iocStatus}
+                    onClose={() => setContextMenu(null)}
+                    onStatusChanged={handleStatusChanged}
+                />
+            )}
         </div>
     );
 }

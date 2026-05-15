@@ -28,6 +28,46 @@
   }
 }
 
+/* IOC highlighting */
+.ioc-highlight {
+  border-radius: 2px;
+  padding: 0 2px;
+  cursor: context-menu;
+}
+
+.ioc-highlight--detected {
+  background-color: rgba(250, 204, 21, 0.25);
+  border-bottom: 1px solid rgba(250, 204, 21, 0.6);
+}
+
+.ioc-highlight--confirmed {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.ioc-highlight--false_positive {
+  background-color: rgba(148, 163, 184, 0.15);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.ioc-highlight:hover {
+  opacity: 0.85;
+}
+
+/* Block navigation pulse -- fired when IOC Summary navigates to a block */
+@keyframes block-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.5); }
+  50%  { box-shadow: 0 0 0 6px rgba(96, 165, 250, 0.2); }
+  100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+}
+
+.block-target {
+  animation: block-pulse 1.2s ease-out forwards;
+  outline: 1px solid rgba(96, 165, 250, 0.4);
+  border-radius: 8px;
+}
+
 @font-face {
   font-family: 'Nunito';
   font-style: normal;

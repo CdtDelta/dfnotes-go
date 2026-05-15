@@ -31,6 +31,10 @@ go.work.sum
 # Project documentation (sensitive)
 docs/
 
+# Claude related items
+CLAUDE.md
+.claude/
+
 # Wails build output
 build/bin/
 

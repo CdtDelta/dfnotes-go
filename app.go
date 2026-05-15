@@ -11,20 +11,24 @@ import (
 	"strings"
 
 	"dfnotes-go/internal/database"
+	"dfnotes-go/internal/ioc"
+	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
-	ctx              context.Context
-	db               *database.DB
-	session          *services.Session
-	identityService  *services.IdentityService
-	caseService      *services.CaseService
-	noteService      *services.NoteService
-	evidenceService  *services.EvidenceService
-	tagService       *services.TagService
+	ctx             context.Context
+	db              *database.DB
+	session         *services.Session
+	identityService *services.IdentityService
+	caseService     *services.CaseService
+	noteService     *services.NoteService
+	evidenceService *services.EvidenceService
+	tagService      *services.TagService
+	iocService      *ioc.IOCService
+	timelineService *services.TimelineService
 }
 
 func NewApp() *App {
@@ -49,6 +53,8 @@ func (a *App) startup(ctx context.Context) {
 	evidenceRepo := database.NewEvidenceRepo(db)
 	tagRepo := database.NewTagRepo(db)
 	attachmentRepo := database.NewAttachmentRepo(db)
+	iocRepo := database.NewIOCRepo(db)
+	timelineRepo := database.NewTimelineRepo(db)
 
 	a.session = services.NewSession()
 	a.identityService = services.NewIdentityService(userRepo, auditRepo, a.session)
@@ -56,6 +62,8 @@ func (a *App) startup(ctx context.Context) {
 	a.noteService = services.NewNoteService(noteBlockRepo, caseRepo, auditRepo, attachmentRepo, a.session)
 	a.evidenceService = services.NewEvidenceService(evidenceRepo, auditRepo, a.session)
 	a.tagService = services.NewTagService(tagRepo, a.session)
+	a.iocService = ioc.NewIOCService(iocRepo)
+	a.timelineService = services.NewTimelineService(timelineRepo, a.session)
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -129,7 +137,21 @@ func (a *App) LockCase(caseID string) error {
 
 // CommitNote creates a new immutable note block in the chain.
 func (a *App) CommitNote(req services.CommitNoteRequest) (*services.NoteBlockResponse, error) {
-	return a.noteService.CommitNote(a.ctx, req)
+	resp, err := a.noteService.CommitNote(a.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// Best-effort IOC detection -- failure does not fail the commit.
+	var evID *string
+	if req.EvidenceItemID != "" {
+		evID = &req.EvidenceItemID
+	}
+	if detectErr := a.iocService.DetectAndStore(
+		a.ctx, req.CaseID, resp.BlockID, evID, req.Content, resp.AuthorID,
+	); detectErr != nil {
+		log.Printf("ioc detection failed for block %s: %v", resp.BlockID, detectErr)
+	}
+	return resp, nil
 }
 
 // ListNotes returns all note blocks for a case, decrypted and verified.
@@ -210,6 +232,43 @@ func (a *App) SaveAttachment(req services.SaveAttachmentRequest) (*services.Atta
 // GetAttachment retrieves and decrypts an attachment.
 func (a *App) GetAttachment(caseID, attachmentID string) (*services.AttachmentResponse, error) {
 	return a.noteService.GetAttachment(a.ctx, caseID, attachmentID)
+}
+
+// GetCaseIOCs returns IOC entries for a case.
+// When includeAll is false, false_positive records are excluded (default for summary page).
+func (a *App) GetCaseIOCs(caseID string, includeAll bool) ([]ioc.IOCEntry, error) {
+	return a.iocService.GetCaseIOCs(a.ctx, caseID, includeAll)
+}
+
+// UpdateIOCStatus changes the status of an IOC (detected, confirmed, false_positive).
+func (a *App) UpdateIOCStatus(iocID string, status string) error {
+	return a.iocService.UpdateIOCStatus(a.ctx, iocID, status)
+}
+
+// GetBlockIOCs returns all IOC entries for a specific committed block.
+func (a *App) GetBlockIOCs(blockID string) ([]ioc.IOCEntry, error) {
+	return a.iocService.GetBlockIOCs(a.ctx, blockID)
+}
+
+// GetTimelineEntries returns all timeline entries for a case, sorted by timestamp ASC.
+func (a *App) GetTimelineEntries(caseID string) ([]models.TimelineEntry, error) {
+	return a.timelineService.GetTimelineEntries(a.ctx, caseID)
+}
+
+// CreateTimelineEntry adds a new timeline entry to a case.
+func (a *App) CreateTimelineEntry(req models.CreateTimelineEntryRequest) (*models.TimelineEntry, error) {
+	return a.timelineService.CreateTimelineEntry(a.ctx, req)
+}
+
+// UpdateTimelineEntry updates timestamp, timezone, description, and notes on an existing entry.
+func (a *App) UpdateTimelineEntry(req models.UpdateTimelineEntryRequest) (*models.TimelineEntry, error) {
+	return a.timelineService.UpdateTimelineEntry(a.ctx, req)
+}
+
+// DeleteTimelineEntry hard-deletes a timeline entry. Timeline entries are analyst
+// working notes and are not part of the hash chain.
+func (a *App) DeleteTimelineEntry(entryID string) error {
+	return a.timelineService.DeleteTimelineEntry(a.ctx, entryID)
 }
 
 // AttachImage opens a native file dialog for images, reads the selected file,

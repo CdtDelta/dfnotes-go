@@ -33,17 +33,11 @@ type NoteBlockRepository interface {
 	GetLastBlock(ctx context.Context, caseID string) (*NoteBlock, error)
 }
 
-type IOCRepository interface {
-	Create(ctx context.Context, entry *IOCEntry) error
-	GetByID(ctx context.Context, iocID string) (*IOCEntry, error)
-	ListByCase(ctx context.Context, caseID string) ([]IOCEntry, error)
-	Delete(ctx context.Context, iocID string) error
-}
-
 type TimelineRepository interface {
 	Create(ctx context.Context, entry *TimelineEntry) error
 	GetByID(ctx context.Context, entryID string) (*TimelineEntry, error)
 	ListByCase(ctx context.Context, caseID string) ([]TimelineEntry, error)
+	Update(ctx context.Context, entry *TimelineEntry) error
 	Delete(ctx context.Context, entryID string) error
 }
 
