@@ -328,7 +328,7 @@ function TimezoneSelect({
                         <button
                             key={`${ianaZone}-${matchNote}`}
                             onMouseDown={(e) => { e.preventDefault(); select(ianaZone); }}
-                            className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-700 transition-colors ${ianaZone === value ? 'text-blue-400 bg-gray-700/50' : 'text-gray-200'}`}
+                            className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-700 transition-colors ${ianaZone === value ? 'text-blue-400 bg-gray-700' : 'text-gray-200'}`}
                         >
                             {ianaZone}
                             {matchNote && <span className="ml-2 text-xs text-gray-500">({matchNote})</span>}
@@ -576,7 +576,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                                 {displayed.map((entry) => {
                                     if (editingId === entry.entry_id) {
                                         return (
-                                            <tr key={entry.entry_id} className="bg-gray-800/60">
+                                            <tr key={entry.entry_id} className="bg-gray-800">
                                                 <td className="py-2 pr-4 align-top" colSpan={5}>
                                                     <div className="space-y-2">
                                                         <div className="grid grid-cols-2 gap-2">
@@ -669,7 +669,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                                         : '';
 
                                     return (
-                                        <tr key={entry.entry_id} className="hover:bg-gray-800/50">
+                                        <tr key={entry.entry_id} className="hover:bg-gray-800">
                                             <td className="py-2 pr-4 align-top">
                                                 <div className="font-mono text-xs text-gray-200 whitespace-nowrap">
                                                     {entry.timestamp}

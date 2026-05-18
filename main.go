@@ -18,6 +18,13 @@ func createMenu(app *App) *menu.Menu {
 	appMenu := menu.NewMenu()
 
 	fileMenu := appMenu.AddSubmenu("File")
+	fileMenu.AddText("Export Case", nil, func(_ *menu.CallbackData) {
+		app.handleExportCaseMenu()
+	})
+	fileMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+		wailsruntime.EventsEmit(app.ctx, "menu:settings")
+	})
+	fileMenu.AddSeparator()
 	fileMenu.AddText("Lock Case", keys.CmdOrCtrl("l"), func(_ *menu.CallbackData) {
 		wailsruntime.EventsEmit(app.ctx, "menu:lock-case")
 	})
@@ -27,14 +34,16 @@ func createMenu(app *App) *menu.Menu {
 	})
 
 	viewMenu := appMenu.AddSubmenu("View")
-	viewMenu.AddText("Theme", nil, nil).Disable()
+	viewMenu.AddText("Theme", nil, func(_ *menu.CallbackData) {
+		wailsruntime.EventsEmit(app.ctx, "menu:theme")
+	})
 
 	helpMenu := appMenu.AddSubmenu("Help")
 	helpMenu.AddText("About", nil, func(_ *menu.CallbackData) {
 		wailsruntime.MessageDialog(app.ctx, wailsruntime.MessageDialogOptions{
 			Type:    wailsruntime.InfoDialog,
 			Title:   "About DFNotes",
-			Message: "DFNotes — Digital Forensic Notebook\nSecure, tamper-evident case notes.",
+			Message: "DFNotes - Digital Forensic Notebook\nSecure, tamper-evident case notes.",
 		})
 	})
 

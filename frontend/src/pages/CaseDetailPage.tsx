@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GetCase, UnlockCase, LockCase, ListEvidence } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
@@ -11,6 +11,7 @@ import MasterNotesTab from '../components/MasterNotesTab';
 import IOCSummaryTab from '../components/IOCSummaryTab';
 import TimelineTab from '../components/TimelineTab';
 import ErrorMessage from '../components/ErrorMessage';
+import ExportDialog from '../components/ExportDialog';
 
 type PageState = 'loading' | 'locked' | 'unlocked';
 
@@ -25,6 +26,21 @@ export default function CaseDetailPage() {
     const [error, setError] = useState('');
     const [unlocking, setUnlocking] = useState(false);
     const [evidenceItems, setEvidenceItems] = useState<services.EvidenceResponse[]>([]);
+    const [showExportDialog, setShowExportDialog] = useState(false);
+
+    // Always-current ref so the unmount cleanup can read the latest pageState
+    const pageStateRef = useRef<PageState>('loading');
+    useEffect(() => { pageStateRef.current = pageState; });
+
+    // Auto-lock when navigating away while the case is unlocked so caseKeys
+    // are never left populated after the user leaves the case page.
+    useEffect(() => {
+        return () => {
+            if (pageStateRef.current === 'unlocked' && caseId) {
+                LockCase(caseId).catch(() => {});
+            }
+        };
+    }, [caseId]);
 
     const fetchEvidenceItems = useCallback(() => {
         if (!caseId) return;
@@ -96,6 +112,16 @@ export default function CaseDetailPage() {
         }
     }, []);
 
+    // Listen for menu Export Case event -- only triggers when case is unlocked
+    useEffect(() => {
+        const cleanup = EventsOn('menu:export-case', () => {
+            if (pageState === 'unlocked' && caseId) {
+                setShowExportDialog(true);
+            }
+        });
+        return cleanup;
+    }, [pageState, caseId]);
+
     // Listen for menu Lock Case event
     useEffect(() => {
         const cleanup = EventsOn('menu:lock-case', () => {
@@ -139,6 +165,7 @@ export default function CaseDetailPage() {
     ];
 
     return (
+        <>
         <div className="min-h-screen p-6">
             <div>
                 {/* Header */}
@@ -216,26 +243,24 @@ export default function CaseDetailPage() {
                 {pageState === 'unlocked' && caseData && (
                     <>
                         {/* Tab Bar */}
-                        <div className="border-b border-gray-700 mb-6">
-                            <nav className="flex gap-4">
-                                {tabs.map((tab) => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => {
-                                            setActiveTab(tab.id);
-                                            if (tab.id === 'evidence') fetchEvidenceItems();
-                                        }}
-                                        className={`pb-3 px-1 text-sm font-medium transition-colors border-b-2 ${
-                                            activeTab === tab.id
-                                                ? 'border-blue-500 text-blue-400'
-                                                : 'border-transparent text-gray-400 hover:text-gray-200'
-                                        }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
+                        <nav className="flex flex-wrap gap-2 mb-6">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => {
+                                        setActiveTab(tab.id);
+                                        if (tab.id === 'evidence') fetchEvidenceItems();
+                                    }}
+                                    className={`px-4 py-2 text-sm font-medium rounded border transition-colors ${
+                                        activeTab === tab.id
+                                            ? 'border-[var(--border-accent-bright)] bg-[var(--bg-accent)] text-gray-100'
+                                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-100 hover:border-[var(--border-accent-bright)]'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </nav>
 
                         {/* Tab Content */}
                         {activeTab === 'overview' && <CaseOverviewTab caseData={caseData} />}
@@ -273,5 +298,14 @@ export default function CaseDetailPage() {
                 )}
             </div>
         </div>
+
+        {showExportDialog && caseId && caseData && (
+            <ExportDialog
+                caseID={caseId}
+                caseNumber={caseData.case_number}
+                onClose={() => setShowExportDialog(false)}
+            />
+        )}
+        </>
     );
 }

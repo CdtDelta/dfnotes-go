@@ -218,7 +218,7 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOC
                                 ? (evidenceMap.get(ioc.evidence_item_id) ?? ioc.evidence_item_id)
                                 : 'Master Notes';
                             return (
-                                <tr key={ioc.ioc_id} className="hover:bg-gray-800/50">
+                                <tr key={ioc.ioc_id} className="hover:bg-gray-800">
                                     <td className="py-2 pr-4">
                                         <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[ioc.type]}`}>
                                             {typeLabel}

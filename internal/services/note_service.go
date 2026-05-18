@@ -113,6 +113,13 @@ func (s *NoteService) UnlockCase(ctx context.Context, req UnlockCaseRequest) err
 	return nil
 }
 
+// HasActiveCases returns true if any case is currently unlocked.
+func (s *NoteService) HasActiveCases() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.caseKeys) > 0
+}
+
 func (s *NoteService) LockCase(ctx context.Context, caseID string) error {
 	if !s.session.IsAuthenticated() {
 		return errors.New("not authenticated")

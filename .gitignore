@@ -44,3 +44,4 @@ frontend/node_modules/
 
 # Wails generated JS bindings
 frontend/wailsjs/
+MEMORY/

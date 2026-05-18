@@ -144,7 +144,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
             </div>
             <div
                 ref={containerRef}
-                className="prose prose-invert prose-sm max-w-none mb-3 break-words"
+                className="prose prose-sm max-w-none mb-3 break-words"
                 onContextMenu={handleContextMenu}
                 onClick={handleClick}
                 dangerouslySetInnerHTML={{ __html: highlightedHtml }}

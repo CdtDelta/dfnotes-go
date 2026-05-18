@@ -10,7 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"dfnotes-go/internal/backup"
+	"dfnotes-go/internal/config"
 	"dfnotes-go/internal/database"
+	"dfnotes-go/internal/export"
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
@@ -20,7 +23,9 @@ import (
 
 type App struct {
 	ctx             context.Context
+	cfg             *config.Config
 	db              *database.DB
+	dbMissing       bool // cfg.DatabasePath set but file absent
 	session         *services.Session
 	identityService *services.IdentityService
 	caseService     *services.CaseService
@@ -29,6 +34,8 @@ type App struct {
 	tagService      *services.TagService
 	iocService      *ioc.IOCService
 	timelineService *services.TimelineService
+	backupScheduler *backup.Scheduler
+	noteBlockRepo   models.NoteBlockRepository
 }
 
 func NewApp() *App {
@@ -38,13 +45,36 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	dbPath := database.DefaultDBPath()
-	db, err := database.Open(dbPath)
+	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("failed to open database at %s: %v", dbPath, err)
+		log.Fatalf("failed to load config: %v", err)
+	}
+	a.cfg = cfg
+
+	if cfg.DatabasePath == "" {
+		// First launch: no path configured yet. Wizard calls InitializeDatabase.
+		return
+	}
+
+	if _, statErr := os.Stat(cfg.DatabasePath); os.IsNotExist(statErr) {
+		// Path is configured but file is gone -- not a first launch, not openable.
+		// Frontend detects this via CheckFirstLaunch returning an error.
+		a.dbMissing = true
+		return
+	}
+
+	if err := a.openDatabase(cfg.DatabasePath); err != nil {
+		log.Fatalf("failed to open database at %s: %v", cfg.DatabasePath, err)
+	}
+}
+
+func (a *App) openDatabase(path string) error {
+	db, err := database.Open(path)
+	if err != nil {
+		return err
 	}
 	a.db = db
-	log.Printf("Database initialized at %s", dbPath)
+	log.Printf("Database initialized at %s", path)
 
 	userRepo := database.NewUserRepo(db)
 	caseRepo := database.NewCaseRepo(db)
@@ -64,9 +94,14 @@ func (a *App) startup(ctx context.Context) {
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.iocService = ioc.NewIOCService(iocRepo)
 	a.timelineService = services.NewTimelineService(timelineRepo, a.session)
+	a.noteBlockRepo = noteBlockRepo
+	return nil
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.backupScheduler != nil {
+		a.backupScheduler.Stop()
+	}
 	if a.noteService != nil {
 		a.noteService.ClearAll()
 	}
@@ -78,8 +113,15 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 }
 
-// CheckFirstLaunch returns true if no user exists (first launch).
+// CheckFirstLaunch returns true if the DB is not yet initialized (no path set),
+// or (false, error) if the configured DB file is missing, or false for normal auth flow.
 func (a *App) CheckFirstLaunch() (bool, error) {
+	if a.dbMissing {
+		return false, fmt.Errorf("database file not found at %s -- the file may have been moved or deleted", a.cfg.DatabasePath)
+	}
+	if a.db == nil {
+		return true, nil
+	}
 	_, err := a.identityService.GetFirstUser(a.ctx)
 	if err != nil {
 		if err.Error() == "not found" {
@@ -95,9 +137,14 @@ func (a *App) GetUserInfo() (*services.LoginScreenInfo, error) {
 	return a.identityService.GetLoginScreenInfo(a.ctx)
 }
 
-// SetupIdentity creates the initial user identity.
+// SetupIdentity creates the initial user identity and starts the backup scheduler.
 func (a *App) SetupIdentity(req services.SetupRequest) (*services.SetupResponse, error) {
-	return a.identityService.Setup(a.ctx, req)
+	resp, err := a.identityService.Setup(a.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	a.startBackupScheduler()
+	return resp, nil
 }
 
 // ConfirmTOTPSetup verifies a TOTP code during setup.
@@ -105,9 +152,14 @@ func (a *App) ConfirmTOTPSetup(code string) (bool, error) {
 	return a.identityService.ConfirmTOTPSetup(a.ctx, code)
 }
 
-// Login authenticates the user.
+// Login authenticates the user and starts the backup scheduler.
 func (a *App) Login(req services.LoginRequest) (*services.LoginResponse, error) {
-	return a.identityService.LoginFirstUser(a.ctx, req)
+	resp, err := a.identityService.LoginFirstUser(a.ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	a.startBackupScheduler()
+	return resp, nil
 }
 
 // CreateCase creates a new forensic case.
@@ -133,6 +185,22 @@ func (a *App) UnlockCase(req services.UnlockCaseRequest) error {
 // LockCase locks a case, zeroing its key material.
 func (a *App) LockCase(caseID string) error {
 	return a.noteService.LockCase(a.ctx, caseID)
+}
+
+func (a *App) startBackupScheduler() {
+	if a.backupScheduler != nil {
+		a.backupScheduler.Stop()
+	}
+	dbPath := a.cfg.DatabasePath
+	if dbPath == "" {
+		dbPath = database.DefaultDBPath()
+	}
+	a.backupScheduler = backup.NewScheduler(a.cfg, dbPath, func(err error) {
+		wailsruntime.EventsEmit(a.ctx, "backup:failed", err.Error())
+	})
+	if a.cfg.BackupEnabled {
+		a.backupScheduler.Start()
+	}
 }
 
 // CommitNote creates a new immutable note block in the chain.
@@ -269,6 +337,308 @@ func (a *App) UpdateTimelineEntry(req models.UpdateTimelineEntryRequest) (*model
 // working notes and are not part of the hash chain.
 func (a *App) DeleteTimelineEntry(entryID string) error {
 	return a.timelineService.DeleteTimelineEntry(a.ctx, entryID)
+}
+
+// GetDefaultDBPath returns the OS-appropriate default database path.
+func (a *App) GetDefaultDBPath() string {
+	return database.DefaultDBPath()
+}
+
+// ChooseDBSavePath opens a native save-file dialog filtered to .db files.
+func (a *App) ChooseDBSavePath() (string, error) {
+	return wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "Choose Database Location",
+		DefaultFilename: "dfnotes.db",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "SQLite Database", Pattern: "*.db"},
+		},
+	})
+}
+
+// InitializeDatabase creates a new database at path, saves the path to config,
+// and initializes all services. Returns a "FILE_EXISTS:..." error if a file already
+// exists at path so the wizard can offer to open it instead.
+func (a *App) InitializeDatabase(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("FILE_EXISTS: a database file already exists at %s", path)
+	}
+	if err := a.openDatabase(path); err != nil {
+		return fmt.Errorf("initialize database: %w", err)
+	}
+	a.cfg.DatabasePath = path
+	return config.Save(a.cfg)
+}
+
+// MoveDatabase copies the current database to newPath, verifies integrity via
+// SHA-256, updates config, and removes the original. The case must be locked.
+func (a *App) MoveDatabase(newPath string) error {
+	if a.noteService != nil && a.noteService.HasActiveCases() {
+		return fmt.Errorf("lock the active case before moving the database")
+	}
+	if a.db == nil {
+		return fmt.Errorf("no database is open")
+	}
+	currentPath := a.cfg.DatabasePath
+	if currentPath == "" {
+		currentPath = database.DefaultDBPath()
+	}
+
+	// Close before copy: SQLite checkpoints the WAL into the main file on close.
+	a.db.Close()
+	a.db = nil
+
+	if err := database.CopyAndVerify(currentPath, newPath); err != nil {
+		log.Printf("Recovery: re-opening original database at %s", currentPath)
+		if reopenErr := a.openDatabase(currentPath); reopenErr != nil {
+			log.Printf("critical: failed to reopen original database after failed move: %v", reopenErr)
+		}
+		return fmt.Errorf("copy database: %w", err)
+	}
+
+	if err := os.Remove(currentPath); err != nil {
+		log.Printf("warning: could not remove original database at %s: %v", currentPath, err)
+	}
+
+	a.cfg.DatabasePath = newPath
+	if err := config.Save(a.cfg); err != nil {
+		log.Printf("critical: config save failed after move to %s: %v", newPath, err)
+	}
+
+	if err := a.openDatabase(newPath); err != nil {
+		return fmt.Errorf("open database at new path: %w", err)
+	}
+	a.dbMissing = false
+	return nil
+}
+
+// PointDatabase validates that newPath is a dfnotes-go database and updates
+// config to use it. The case must be locked.
+func (a *App) PointDatabase(newPath string) error {
+	if a.noteService != nil && a.noteService.HasActiveCases() {
+		return fmt.Errorf("lock the active case before changing the database")
+	}
+	if err := database.ValidateSchema(newPath); err != nil {
+		return fmt.Errorf("invalid database: %w", err)
+	}
+	if a.db != nil {
+		a.db.Close()
+		a.db = nil
+	}
+	if err := a.openDatabase(newPath); err != nil {
+		return fmt.Errorf("open database at new path: %w", err)
+	}
+	a.dbMissing = false
+	a.cfg.DatabasePath = newPath
+	return config.Save(a.cfg)
+}
+
+// handleExportCaseMenu is called from the native menu callback. It shows a
+// native info dialog when no case is unlocked, otherwise signals the frontend.
+func (a *App) handleExportCaseMenu() {
+	if a.noteService == nil || !a.noteService.HasActiveCases() {
+		wailsruntime.MessageDialog(a.ctx, wailsruntime.MessageDialogOptions{
+			Type:    wailsruntime.InfoDialog,
+			Title:   "Export Case",
+			Message: "No case is currently open. Open and unlock a case before exporting.",
+		})
+		return
+	}
+	wailsruntime.EventsEmit(a.ctx, "menu:export-case")
+}
+
+// ChooseExportSavePath opens a native save-file dialog for the export archive.
+func (a *App) ChooseExportSavePath(defaultName string) (string, error) {
+	defaultDir := filepath.Dir(a.cfg.DatabasePath)
+	return wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:            "Save Export Archive",
+		DefaultDirectory: defaultDir,
+		DefaultFilename:  defaultName,
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "7z Archive", Pattern: "*.7z"},
+		},
+	})
+}
+
+// ChooseDBOpenPath opens a native file picker filtered to .db files.
+func (a *App) ChooseDBOpenPath() (string, error) {
+	return wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Select Database File",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "SQLite Database", Pattern: "*.db"},
+		},
+	})
+}
+
+// GetBackupStatus returns the current backup status, reading last-run info
+// from config (persisted) so the values survive app restarts.
+func (a *App) GetBackupStatus() backup.Status {
+	st := backup.Status{LastBackupStatus: "never"}
+	if a.cfg != nil && a.cfg.LastBackupStatus != "" {
+		st.LastBackupTime = a.cfg.LastBackupAt
+		st.LastBackupStatus = a.cfg.LastBackupStatus
+	}
+	if a.backupScheduler != nil {
+		st.IsRunning = a.backupScheduler.Status().IsRunning
+	}
+	return st
+}
+
+// TriggerBackupNow runs a backup immediately.
+func (a *App) TriggerBackupNow() error {
+	log.Printf("TriggerBackupNow called")
+	if a.backupScheduler == nil {
+		return fmt.Errorf("backup scheduler not initialized")
+	}
+	return a.backupScheduler.RunNow()
+}
+
+// GetConfig returns the current application configuration.
+func (a *App) GetConfig() config.Config {
+	return *a.cfg
+}
+
+// GetDBPath returns the path of the currently open database file.
+func (a *App) GetDBPath() string {
+	if a.cfg.DatabasePath != "" {
+		return a.cfg.DatabasePath
+	}
+	return database.DefaultDBPath()
+}
+
+// ChooseDirectory opens a native directory picker and returns the selected path.
+func (a *App) ChooseDirectory() (string, error) {
+	return wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Select Directory",
+	})
+}
+
+// SaveConfig persists the updated configuration to disk.
+func (a *App) SaveConfig(cfg config.Config) error {
+	log.Printf("Config saved: backup_dest_path=%q", cfg.BackupDestPath)
+	// Preserve scheduler-owned fields; the frontend form does not manage them.
+	cfg.LastBackupAt = a.cfg.LastBackupAt
+	cfg.LastBackupStatus = a.cfg.LastBackupStatus
+	if err := config.Save(&cfg); err != nil {
+		return err
+	}
+	*a.cfg = cfg
+	return nil
+}
+
+// ExportCase exports the full case to a password-protected 7z archive at archivePath.
+// Runs in a background goroutine; progress is reported via Wails events:
+//
+//	export:progress {"stage": "...", "percent": N}
+//	export:complete {"path": "..."}
+//	export:error    {"message": "..."}
+func (a *App) ExportCase(caseID string, archivePassword string, archivePath string) error {
+	if len(archivePassword) < 8 {
+		return fmt.Errorf("archive password must be at least 8 characters")
+	}
+	if archivePath == "" {
+		return fmt.Errorf("archive path must not be empty")
+	}
+	if a.noteBlockRepo == nil || a.noteService == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	// Snapshot all fields accessed inside the goroutine to avoid data races
+	// with concurrent MoveDatabase/PointDatabase calls on the main goroutine.
+	ctx             := a.ctx
+	caseService     := a.caseService
+	evidenceService := a.evidenceService
+	noteService     := a.noteService
+	noteBlockRepo   := a.noteBlockRepo
+	iocService      := a.iocService
+	timelineService := a.timelineService
+	identityService := a.identityService
+	dbPath          := a.cfg.DatabasePath
+
+	go func() {
+		emitErr := func(msg string) {
+			wailsruntime.EventsEmit(ctx, "export:error", map[string]string{"message": msg})
+		}
+
+		caseData, err := caseService.GetCase(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("get case: %v", err))
+			return
+		}
+
+		evidenceItems, err := evidenceService.ListEvidence(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("list evidence: %v", err))
+			return
+		}
+
+		masterBlocks, err := noteService.ListNotes(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("list notes: %v", err))
+			return
+		}
+
+		evidenceBlockMap := make(map[string][]services.NoteBlockResponse, len(evidenceItems))
+		for _, item := range evidenceItems {
+			blocks, err := noteService.ListEvidenceNotes(ctx, caseID, item.EvidenceItemID)
+			if err != nil {
+				emitErr(fmt.Sprintf("list evidence notes for %s: %v", item.EvidenceItemID, err))
+				return
+			}
+			evidenceBlockMap[item.EvidenceItemID] = blocks
+		}
+
+		rawBlocks, err := noteBlockRepo.ListByCase(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("list raw blocks: %v", err))
+			return
+		}
+
+		iocEntries, err := iocService.GetCaseIOCs(ctx, caseID, true)
+		if err != nil {
+			emitErr(fmt.Sprintf("get IOCs: %v", err))
+			return
+		}
+
+		timelineEntries, err := timelineService.GetTimelineEntries(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("get timeline: %v", err))
+			return
+		}
+
+		user, err := identityService.GetFirstUser(ctx)
+		if err != nil {
+			emitErr(fmt.Sprintf("get user: %v", err))
+			return
+		}
+
+		req := export.ExportRequest{
+			CaseID:          caseID,
+			ArchivePassword: archivePassword,
+			DBPath:          dbPath,
+			ArchivePath:     archivePath,
+			ExaminerName:    user.Name,
+			ExaminerPubKey:  user.PublicKey,
+		}
+
+		archivePath, err := export.ExportCase(
+			ctx, req, caseData, evidenceItems, masterBlocks, evidenceBlockMap,
+			rawBlocks, iocEntries, timelineEntries,
+			func(stage string, percent int) {
+				wailsruntime.EventsEmit(ctx, "export:progress", map[string]any{
+					"stage":   stage,
+					"percent": percent,
+				})
+			},
+		)
+		if err != nil {
+			emitErr(err.Error())
+			return
+		}
+
+		wailsruntime.EventsEmit(ctx, "export:complete", map[string]string{"path": archivePath})
+	}()
+
+	return nil
 }
 
 // AttachImage opens a native file dialog for images, reads the selected file,

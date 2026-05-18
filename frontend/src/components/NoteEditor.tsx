@@ -261,7 +261,7 @@ export default function NoteEditor({ caseId, content, onChange, evidenceItems, o
             </div>
 
             {previewMode ? (
-                <div className="prose prose-invert prose-sm max-w-none min-h-[160px] p-3 bg-gray-900 rounded border border-gray-700 break-words overflow-hidden">
+                <div className="prose prose-sm max-w-none min-h-[160px] p-3 bg-gray-900 rounded border border-gray-700 break-words overflow-hidden">
                     {content.trim() ? (
                         <MarkdownRenderer
                             content={content}

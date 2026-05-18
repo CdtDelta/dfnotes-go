@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { SetupIdentity, ConfirmTOTPSetup } from '../../wailsjs/go/main/App';
+import { SetupIdentity, ConfirmTOTPSetup, InitializeDatabase, GetDefaultDBPath, ChooseDBSavePath, PointDatabase } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
 import { useAuth } from '../context/AuthContext';
 import ErrorMessage from '../components/ErrorMessage';
 
-type Step = 'identity' | 'password' | 'totp' | 'recovery';
+type Step = 'dbpath' | 'identity' | 'password' | 'totp' | 'recovery';
 
 export default function SetupWizard() {
     const { setSetupComplete } = useAuth();
-    const [step, setStep] = useState<Step>('identity');
+    const [step, setStep] = useState<Step>('dbpath');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showFileExistsPrompt, setShowFileExistsPrompt] = useState(false);
+
+    // DB path state
+    const [dbPath, setDbPath] = useState('');
 
     // Form state
     const [name, setName] = useState('');
@@ -26,11 +30,60 @@ export default function SetupWizard() {
     const [totpCode, setTotpCode] = useState('');
     const [setupResponse, setSetupResponse] = useState<services.SetupResponse | null>(null);
 
-    // Manual setup toggle
     const [showManual, setShowManual] = useState(false);
-
-    // Recovery state
     const [savedCodes, setSavedCodes] = useState(false);
+
+    useEffect(() => {
+        GetDefaultDBPath()
+            .then(setDbPath)
+            .catch(() => {});
+    }, []);
+
+    const handleBrowseDBPath = async () => {
+        try {
+            const chosen = await ChooseDBSavePath();
+            if (chosen) setDbPath(chosen);
+        } catch (err: unknown) {
+            setError(String(err));
+        }
+    };
+
+    const handleDBPathNext = async () => {
+        setError('');
+        setShowFileExistsPrompt(false);
+        if (!dbPath.trim()) {
+            setError('Database path is required');
+            return;
+        }
+        setLoading(true);
+        try {
+            await InitializeDatabase(dbPath.trim());
+            setStep('identity');
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('FILE_EXISTS')) {
+                setShowFileExistsPrompt(true);
+            } else {
+                setError(msg);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOpenExisting = async () => {
+        setError('');
+        setLoading(true);
+        try {
+            await PointDatabase(dbPath.trim());
+            setStep('identity');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : String(err));
+            setShowFileExistsPrompt(false);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleIdentityNext = () => {
         setError('');
@@ -57,7 +110,6 @@ export default function SetupWizard() {
         }
 
         if (enableTOTP) {
-            // Call setup and show TOTP step
             setLoading(true);
             try {
                 const resp = await SetupIdentity({
@@ -76,7 +128,6 @@ export default function SetupWizard() {
                 setLoading(false);
             }
         } else {
-            // No TOTP: setup and authenticate
             setLoading(true);
             try {
                 const resp = await SetupIdentity({
@@ -135,6 +186,8 @@ export default function SetupWizard() {
         }
     };
 
+    const allSteps: Step[] = ['dbpath', 'identity', 'password', ...(enableTOTP ? (['totp', 'recovery'] as Step[]) : [])];
+
     return (
         <div className="min-h-screen flex items-center justify-center p-4">
             <div className="w-full max-w-md">
@@ -143,18 +196,75 @@ export default function SetupWizard() {
 
                 {/* Step indicators */}
                 <div className="flex justify-center mb-8 gap-2">
-                    {(['identity', 'password', ...(enableTOTP ? ['totp', 'recovery'] : [])] as Step[]).map((s) => (
+                    {allSteps.map((s) => (
                         <div
                             key={s}
                             className={`h-2 w-8 rounded-full ${
                                 s === step ? 'bg-blue-500' :
-                                (['identity', 'password', 'totp', 'recovery'].indexOf(s) < ['identity', 'password', 'totp', 'recovery'].indexOf(step)) ? 'bg-blue-700' : 'bg-gray-700'
+                                allSteps.indexOf(s) < allSteps.indexOf(step) ? 'bg-blue-700' : 'bg-gray-700'
                             }`}
                         />
                     ))}
                 </div>
 
                 <ErrorMessage message={error} onDismiss={() => setError('')} />
+
+                {step === 'dbpath' && (
+                    <div className="space-y-4">
+                        <h2 className="text-lg font-semibold">Database Location</h2>
+                        <p className="text-sm text-gray-400">
+                            Choose where to store your case database. The default location is recommended.
+                        </p>
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-1">Database path</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={dbPath}
+                                    onChange={(e) => setDbPath(e.target.value)}
+                                    className="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none font-mono text-sm"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={handleBrowseDBPath}
+                                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-sm text-gray-200 transition-colors"
+                                >
+                                    Browse
+                                </button>
+                            </div>
+                        </div>
+                        {showFileExistsPrompt ? (
+                            <div className="border border-yellow-600 bg-yellow-900 rounded-lg p-4 space-y-3">
+                                <p className="text-sm text-yellow-200 font-medium">A database file already exists at this path.</p>
+                                <p className="text-xs text-yellow-300">Do you want to open the existing database, or choose a different path?</p>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleOpenExisting}
+                                        disabled={loading}
+                                        className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm font-medium transition-colors"
+                                    >
+                                        {loading ? 'Opening...' : 'Open Existing Database'}
+                                    </button>
+                                    <button
+                                        onClick={() => setShowFileExistsPrompt(false)}
+                                        disabled={loading}
+                                        className="flex-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-200 rounded text-sm transition-colors"
+                                    >
+                                        Choose Different Path
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleDBPathNext}
+                                disabled={loading || !dbPath.trim()}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-2 px-4 rounded transition-colors"
+                            >
+                                {loading ? 'Creating...' : 'Next'}
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {step === 'identity' && (
                     <div className="space-y-4">

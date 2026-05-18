@@ -19,14 +19,14 @@ const TYPE_COLORS: Record<string, string> = {
     NETWORK: 'bg-cyan-900/50 text-cyan-300 border-cyan-700',
     LOGS: 'bg-yellow-900/50 text-yellow-300 border-yellow-700',
     MALWARE: 'bg-red-900/50 text-red-300 border-red-700',
-    OTHER: 'bg-gray-800/50 text-gray-300 border-gray-600',
+    OTHER: 'bg-gray-800 text-gray-300 border-gray-600',
 };
 
 const STATUS_COLORS: Record<string, string> = {
     COLLECTED: 'bg-green-900/50 text-green-300 border-green-700',
     ANALYZING: 'bg-yellow-900/50 text-yellow-300 border-yellow-700',
     PROCESSED: 'bg-blue-900/50 text-blue-300 border-blue-700',
-    ARCHIVED: 'bg-gray-800/50 text-gray-400 border-gray-600',
+    ARCHIVED: 'bg-gray-800 text-gray-400 border-gray-600',
     WITHDRAWN: 'bg-red-900/50 text-red-400 border-red-700',
 };
 
