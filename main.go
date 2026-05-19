@@ -39,6 +39,9 @@ func createMenu(app *App) *menu.Menu {
 	})
 
 	helpMenu := appMenu.AddSubmenu("Help")
+	helpMenu.AddText("User Guide", nil, func(_ *menu.CallbackData) {
+		wailsruntime.EventsEmit(app.ctx, "menu:user-guide")
+	})
 	helpMenu.AddText("About", nil, func(_ *menu.CallbackData) {
 		wailsruntime.MessageDialog(app.ctx, wailsruntime.MessageDialogOptions{
 			Type:    wailsruntime.InfoDialog,

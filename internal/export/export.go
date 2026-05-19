@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -72,6 +73,25 @@ type chainVerification struct {
 	TotalBlocks        int           `json:"total_blocks"`
 }
 
+type taskExport struct {
+	TaskID       string              `json:"task_id"`
+	Title        string              `json:"title"`
+	Description  string              `json:"description"`
+	Status       string              `json:"status"`
+	EvidenceItem string              `json:"evidence_item,omitempty"`
+	TemplateName string              `json:"template_name,omitempty"`
+	CreatedAt    string              `json:"created_at"`
+	CompletedAt  string              `json:"completed_at,omitempty"`
+	LinkedBlocks []taskLinkedBlock   `json:"linked_blocks"`
+}
+
+type taskLinkedBlock struct {
+	BlockID     string `json:"block_id"`
+	Source      string `json:"source"`
+	CommittedAt string `json:"committed_at"`
+	ContentHash string `json:"content_hash"`
+}
+
 type iocExport struct {
 	IOCID          string `json:"ioc_id"`
 	Type           string `json:"type"`
@@ -98,6 +118,7 @@ func ExportCase(
 	rawBlocks []models.NoteBlock,
 	iocEntries []ioc.IOCEntry,
 	timelineEntries []models.TimelineEntry,
+	tasks []models.Task,
 	progress ProgressFunc,
 ) (string, error) {
 	if _, err := exec.LookPath("7z"); err != nil {
@@ -206,6 +227,66 @@ func ExportCase(
 	// --- timeline.json ---
 	progress("writing timeline", 65)
 	if err := writeJSON(filepath.Join(tmpDir, "timeline.json"), timelineEntries); err != nil {
+		return "", err
+	}
+
+	// --- tasks.json ---
+	progress("writing tasks", 68)
+	// Build evidence item index for E-number labels
+	sortedEvidence := make([]services.EvidenceResponse, len(evidenceItems))
+	copy(sortedEvidence, evidenceItems)
+	sortEvidenceByCreatedAt(sortedEvidence)
+	evidenceIndex := make(map[string]string, len(sortedEvidence))
+	for i, item := range sortedEvidence {
+		evidenceIndex[item.EvidenceItemID] = fmt.Sprintf("E%03d", i+1)
+	}
+
+	taskExports := make([]taskExport, 0, len(tasks))
+	for _, t := range tasks {
+		evLabel := ""
+		if t.EvidenceItemID != nil {
+			if label, ok := evidenceIndex[*t.EvidenceItemID]; ok {
+				evLabel = label
+			}
+		}
+		tname := ""
+		if t.TemplateName != nil {
+			tname = *t.TemplateName
+		}
+		cat := ""
+		if t.CompletedAt != nil {
+			cat = *t.CompletedAt
+		}
+		linkedBlocks := make([]taskLinkedBlock, 0, len(t.LinkedBlocks))
+		for _, lb := range t.LinkedBlocks {
+			src := "master_notes"
+			if lb.Source != "" {
+				if label, ok := evidenceIndex[lb.Source]; ok {
+					src = label
+				} else {
+					src = lb.Source
+				}
+			}
+			linkedBlocks = append(linkedBlocks, taskLinkedBlock{
+				BlockID:     lb.BlockID,
+				Source:      src,
+				CommittedAt: lb.CommittedAt,
+				ContentHash: lb.ContentHash,
+			})
+		}
+		taskExports = append(taskExports, taskExport{
+			TaskID:       t.TaskID,
+			Title:        t.Title,
+			Description:  t.Description,
+			Status:       string(t.Status),
+			EvidenceItem: evLabel,
+			TemplateName: tname,
+			CreatedAt:    t.CreatedAt,
+			CompletedAt:  cat,
+			LinkedBlocks: linkedBlocks,
+		})
+	}
+	if err := writeJSON(filepath.Join(tmpDir, "tasks.json"), taskExports); err != nil {
 		return "", err
 	}
 
@@ -355,6 +436,7 @@ master_notes/       - Committed note blocks from Master Notes tab (markdown).
 evidence/           - Per-evidence-item metadata and note blocks.
 ioc_summary.json    - All IOC entries with status and source references.
 timeline.json       - All timeline entries.
+tasks.json          - All investigation tasks with status and linked block references.
 chain_verification.json - Full hash chain data for independent verification.
 
 VERIFICATION
@@ -398,6 +480,12 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
+}
+
+func sortEvidenceByCreatedAt(items []services.EvidenceResponse) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt < items[j].CreatedAt
+	})
 }
 
 func sanitizeTS(ts string) string {

@@ -64,3 +64,15 @@ type AuditLogRepository interface {
 	ListByCase(ctx context.Context, caseID string) ([]AuditLog, error)
 	ListByUser(ctx context.Context, userID string) ([]AuditLog, error)
 }
+
+type TaskRepository interface {
+	CreateTask(ctx context.Context, task Task) error
+	GetTask(ctx context.Context, taskID string) (*Task, error)
+	ListTasks(ctx context.Context, caseID string) ([]Task, error)
+	UpdateTask(ctx context.Context, task Task) error
+	DeleteTask(ctx context.Context, taskID string) error
+	LinkNoteBlock(ctx context.Context, taskID string, blockID string) error
+	UnlinkNoteBlock(ctx context.Context, taskID string, blockID string) error
+	GetLinkedBlocks(ctx context.Context, taskID string) ([]LinkedBlock, error)
+	GetLinkedTasks(ctx context.Context, blockID string) ([]Task, error)
+}

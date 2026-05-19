@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.4.0**
+**Version 0.4.5**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -16,7 +16,9 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Evidence item tracking with chain of custody logging
 - Automated IOC detection (12 types) with confirm/false positive workflow
 - Case timeline for key events
+- Task list with templates and note linking for investigation workflow tracking
 - Encrypted export and automated backup
+- Built-in user guide (Help > User Guide)
 
 ---
 
@@ -30,7 +32,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### Note Taking
 - Markdown editor with live preview
-- Block commit workflow: write, preview, commit -- committed blocks are read-only
+- Block commit workflow: write, preview, commit -- committed blocks are read-only and tamper-evident
 - Amendment workflow: original block stays intact, amendment references the original with a required reason
 - Global hash chain per case: every committed block chains to the previous one regardless of which tab it came from
 
@@ -54,6 +56,15 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Searchable timezone dropdown with city name and UTC offset lookup
 - Sortable by timestamp
 - Source navigation links to the originating evidence tab
+
+### Task List
+- Per-case task tracking with five statuses: Open, In Progress, Blocked, Complete, Not Applicable
+- Completion timestamp recorded when a task is marked Complete
+- Tasks assigned to a specific evidence item or to the case overall
+- Task templates: named task sets configured in Settings, applied at any point during an investigation with evidence item assignment. Useful for standard workflows like hard drive imaging or malware triage
+- Many-to-many note block linking: link committed note blocks to tasks as documentation of the work done. A task can have multiple linked notes; a note can link to multiple tasks. Useful at report time for tracing what was done and where the details are recorded
+- Filtering by status and evidence item, combinable
+- Tasks included in case export
 
 ### Tagging
 - 28 predefined standard tags across analysis, status, priority, and evidence type categories
@@ -85,7 +96,9 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `evidence/[ITEM]/` -- metadata.json and block markdown files per evidence item
   - `ioc_summary.json` -- all IOCs with raw and defanged values
   - `timeline.json` -- all timeline entries
+  - `tasks.json` -- all tasks with status, evidence item, and linked block references
   - `chain_verification.json` -- full hash chain with per-block validation results and `chain_intact` flag
+- Once extracted, archive contents are not encrypted -- handle according to your organization's data handling policy
 - Export logged in the audit trail
 
 ### Database Location
@@ -100,6 +113,11 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Master key derived from application password via Argon2id
 - Per-case encryption keys wrapped by the master key
 - All note block content encrypted with AES-256-GCM
+
+### User Guide
+- Built-in help accessible from Help > User Guide
+- 11 sections covering all features: Getting Started, Note Taking, Evidence Management, IOC Detection, Timeline, Task List, Tagging, Backup, Export, Settings, Tips and Shortcuts
+- Fully theme-aware
 
 ---
 
@@ -142,16 +160,6 @@ wails build
 build/bin/dfnotes-go
 ```
 
-The application is built inside a Docker container in the development workflow:
-
-```bash
-# Inside the dfnotes-dev container at /workspace
-wails build -tags webkit2_41
-
-# Run the binary on the host
-build/bin/dfnotes-go
-```
-
 ---
 
 ## Known Limitations
@@ -166,16 +174,35 @@ build/bin/dfnotes-go
 
 ## Changelog
 
+### v0.4.5 (2026-05-19)
+
+**Task List**
+- New Tasks tab per case (positioned after Timeline, before Evidence Tracking)
+- Five task statuses: Open, In Progress, Blocked, Complete, Not Applicable
+- Completion timestamp recorded when a task is marked Complete
+- Tasks assignable to a specific evidence item or to the case overall
+- Task templates: named task sets stored in `~/.config/dfnotes-go/templates.json`, managed from Settings, applied from the Task List tab with evidence item assignment
+- Many-to-many note block linking via junction table -- link notes to tasks and tasks to notes from either side
+- Source navigation from linked notes and linked tasks with pulse animation
+- Filtering by status and evidence item, combinable
+- Tasks included in case export as `tasks.json`
+
+**User Guide**
+- Built-in help dialog accessible from Help > User Guide
+- 11 sections covering all application features
+- Fully theme-aware, no hardcoded colors
+- Escape key and backdrop click to close
+
 ### v0.4.0 (2026-05-18)
 
 **Config and Settings**
-- Application configuration now stored in a dedicated config file at an OS-conventional path (`~/.config/dfnotes-go/config.json` on Linux)
-- New Settings panel accessible from File > Settings (backup configuration, database location, about)
+- Application configuration now stored in a dedicated config file at an OS-conventional path
+- New Settings panel (File > Settings) for backup configuration, database location, template management, and about
 - Unsaved changes indicator in Settings panel
-- Database path now choosable at setup wizard (no longer fixed to a default location)
+- Database path now choosable at setup wizard
 
 **Theming**
-- 11 themes available via View > Theme: Forensic Dark, Classic Dark, High Contrast, Light, Solarized Dark, Monokai, Dracula, Nord, Gruvbox, Matrix, Forensic Blue
+- 11 themes available via View > Theme
 - Active theme applied immediately and persisted to config
 - All colors defined as CSS custom properties -- fully theme-aware including IOC highlights
 - Bordered pill-style tabs with accent color on active tab
@@ -184,31 +211,25 @@ build/bin/dfnotes-go
 - Database location configurable at setup and changeable at any time from Settings
 - Move: safely relocates the database with SHA-256 integrity verification and robust error recovery
 - Point: switch to a different existing dfnotes-go database without touching the original
-- Clear error state if the configured database path is missing on startup, with Locate File option
 
 **Backup**
-- Automated encrypted backups of the case database on a configurable interval (default 6 hours)
-- Configurable destination path, backup interval, and retention count
-- Backup filenames include ISO 8601 UTC timestamps
-- Last backup timestamp and status persisted in config, survives application restarts
+- Automated encrypted backups on configurable interval (default 6 hours)
+- Configurable destination, interval, and retention count
+- Last backup timestamp and status persisted in config
 - Manual "Back up now" trigger in Settings
 - Persistent failure notification banner with snooze and dismiss
 
 **Export**
 - Full case export to AES-256 encrypted 7z archive
-- Separate archive password set at export time
-- Native file dialog for save location selection
-- Archive contains: case metadata, encrypted database, markdown block files with hash/signature headers, IOC summary, timeline, chain verification report
+- Separate archive password and native save location dialog
+- Archive contains case metadata, encrypted database, markdown block files, IOC summary, timeline, chain verification report
 - Export logged in the audit trail
-
-**UI**
-- Updated application menu: File > Export Case, File > Settings, View > Theme
-- Requires `p7zip-full` on Linux for export functionality
+- Requires `p7zip-full` on Linux
 
 ### v0.3.0 (2026-05-15)
 
 - IOC auto-detection (12 types) on block commit
-- IOC highlighting in committed block view with right-click confirm/false positive workflow
+- IOC highlighting with right-click confirm/false positive workflow
 - IOC Summary tab with defanging, filtering, sorting, source navigation
 - Timeline tab with ISO 8601 UTC timestamps and optional secondary timezone display
 - Searchable timezone dropdown

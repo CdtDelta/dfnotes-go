@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -147,6 +148,20 @@ func (s *NoteService) getCaseKey(caseID string) ([]byte, error) {
 		return nil, errors.New("case is locked")
 	}
 	return key, nil
+}
+
+// DecryptBlockContent decrypts a note block's encrypted body using the active case key.
+// Returns an error if the case is locked.
+func (s *NoteService) DecryptBlockContent(caseID string, encryptedBody []byte) (string, error) {
+	key, err := s.getCaseKey(caseID)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := crypto.Decrypt(key, encryptedBody)
+	if err != nil {
+		return "", fmt.Errorf("decrypt block: %w", err)
+	}
+	return string(plaintext), nil
 }
 
 func (s *NoteService) CommitNote(ctx context.Context, req CommitNoteRequest) (*NoteBlockResponse, error) {

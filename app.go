@@ -34,6 +34,7 @@ type App struct {
 	tagService      *services.TagService
 	iocService      *ioc.IOCService
 	timelineService *services.TimelineService
+	taskService     *services.TaskService
 	backupScheduler *backup.Scheduler
 	noteBlockRepo   models.NoteBlockRepository
 }
@@ -85,6 +86,7 @@ func (a *App) openDatabase(path string) error {
 	attachmentRepo := database.NewAttachmentRepo(db)
 	iocRepo := database.NewIOCRepo(db)
 	timelineRepo := database.NewTimelineRepo(db)
+	taskRepo := database.NewTaskRepo(db)
 
 	a.session = services.NewSession()
 	a.identityService = services.NewIdentityService(userRepo, auditRepo, a.session)
@@ -94,6 +96,7 @@ func (a *App) openDatabase(path string) error {
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.iocService = ioc.NewIOCService(iocRepo)
 	a.timelineService = services.NewTimelineService(timelineRepo, a.session)
+	a.taskService = services.NewTaskService(taskRepo, a.noteService, a.session)
 	a.noteBlockRepo = noteBlockRepo
 	return nil
 }
@@ -551,6 +554,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 	noteBlockRepo   := a.noteBlockRepo
 	iocService      := a.iocService
 	timelineService := a.timelineService
+	taskService     := a.taskService
 	identityService := a.identityService
 	dbPath          := a.cfg.DatabasePath
 
@@ -605,6 +609,12 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			return
 		}
 
+		taskList, err := taskService.ListTasks(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("get tasks: %v", err))
+			return
+		}
+
 		user, err := identityService.GetFirstUser(ctx)
 		if err != nil {
 			emitErr(fmt.Sprintf("get user: %v", err))
@@ -622,7 +632,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 
 		archivePath, err := export.ExportCase(
 			ctx, req, caseData, evidenceItems, masterBlocks, evidenceBlockMap,
-			rawBlocks, iocEntries, timelineEntries,
+			rawBlocks, iocEntries, timelineEntries, taskList,
 			func(stage string, percent int) {
 				wailsruntime.EventsEmit(ctx, "export:progress", map[string]any{
 					"stage":   stage,
@@ -639,6 +649,65 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 	}()
 
 	return nil
+}
+
+// CreateTask creates a new task in a case.
+func (a *App) CreateTask(caseID string, title string, description string, evidenceItemID *string) (*models.Task, error) {
+	return a.taskService.CreateTask(a.ctx, caseID, title, description, evidenceItemID)
+}
+
+// ListTasks returns all tasks for a case with linked block previews.
+func (a *App) ListTasks(caseID string) ([]models.Task, error) {
+	return a.taskService.ListTasks(a.ctx, caseID)
+}
+
+// UpdateTaskStatus changes the status of a task and manages completed_at accordingly.
+func (a *App) UpdateTaskStatus(taskID string, status string) error {
+	return a.taskService.UpdateTaskStatus(a.ctx, taskID, status)
+}
+
+// UpdateTask updates the title, description, and evidence item assignment of a task.
+func (a *App) UpdateTask(taskID string, title string, description string, evidenceItemID *string) error {
+	return a.taskService.UpdateTask(a.ctx, taskID, title, description, evidenceItemID)
+}
+
+// DeleteTask permanently removes a task and its note links.
+func (a *App) DeleteTask(taskID string) error {
+	return a.taskService.DeleteTask(a.ctx, taskID)
+}
+
+// LinkNoteToTask creates a link between a task and a committed note block.
+func (a *App) LinkNoteToTask(taskID string, blockID string) error {
+	return a.taskService.LinkNoteToTask(a.ctx, taskID, blockID)
+}
+
+// UnlinkNoteFromTask removes a link between a task and a note block.
+func (a *App) UnlinkNoteFromTask(taskID string, blockID string) error {
+	return a.taskService.UnlinkNoteFromTask(a.ctx, taskID, blockID)
+}
+
+// GetLinkedTasks returns all tasks linked to a given note block.
+func (a *App) GetLinkedTasks(blockID string) ([]models.Task, error) {
+	return a.taskService.GetLinkedTasks(a.ctx, blockID)
+}
+
+// LoadTemplates returns all task templates from the templates config file.
+func (a *App) LoadTemplates() ([]config.TaskTemplate, error) {
+	tf, err := config.LoadTemplates()
+	if err != nil {
+		return nil, err
+	}
+	return tf.Templates, nil
+}
+
+// SaveTemplates overwrites the task templates config file with the provided list.
+func (a *App) SaveTemplates(templates []config.TaskTemplate) error {
+	return config.SaveTemplates(&config.TemplatesFile{Templates: templates})
+}
+
+// ApplyTemplate instantiates all tasks from the named template into the case.
+func (a *App) ApplyTemplate(caseID string, templateName string, evidenceItemID *string) error {
+	return a.taskService.ApplyTemplate(a.ctx, caseID, templateName, evidenceItemID)
 }
 
 // AttachImage opens a native file dialog for images, reads the selected file,

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import LoadingSpinner from './components/LoadingSpinner';
 import ThemePicker from './components/ThemePicker';
+import HelpDialog from './components/HelpDialog';
 import BackupNotification from './components/BackupNotification';
 import SetupWizard from './pages/SetupWizard';
 import DBMissingPage from './pages/DBMissingPage';
@@ -30,9 +31,15 @@ function MenuHandler() {
 function AppRouter() {
     const { appState } = useAuth();
     const [showThemePicker, setShowThemePicker] = useState(false);
+    const [showHelpDialog, setShowHelpDialog] = useState(false);
 
     useEffect(() => {
         const cleanup = EventsOn('menu:theme', () => setShowThemePicker(true));
+        return cleanup;
+    }, []);
+
+    useEffect(() => {
+        const cleanup = EventsOn('menu:user-guide', () => setShowHelpDialog(true));
         return cleanup;
     }, []);
 
@@ -57,6 +64,7 @@ function AppRouter() {
             <MenuHandler />
             <BackupNotification />
             {showThemePicker && <ThemePicker onClose={() => setShowThemePicker(false)} />}
+            {showHelpDialog && <HelpDialog onClose={() => setShowHelpDialog(false)} />}
             <Routes>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/cases/new" element={<CaseCreatePage />} />

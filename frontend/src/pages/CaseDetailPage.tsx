@@ -10,6 +10,7 @@ import EvidenceNotesTab from '../components/EvidenceNotesTab';
 import MasterNotesTab from '../components/MasterNotesTab';
 import IOCSummaryTab from '../components/IOCSummaryTab';
 import TimelineTab from '../components/TimelineTab';
+import TaskListTab from '../components/TaskListTab';
 import ErrorMessage from '../components/ErrorMessage';
 import ExportDialog from '../components/ExportDialog';
 
@@ -157,11 +158,12 @@ export default function CaseDetailPage() {
 
     const tabs: { id: string; label: string }[] = [
         { id: 'overview', label: 'Case Overview' },
-        { id: 'evidence', label: 'Evidence' },
+        { id: 'notes', label: 'Master Notes' },
         ...evidenceTabs,
         { id: 'iocs', label: 'IOC Summary' },
         { id: 'timeline', label: 'Timeline' },
-        { id: 'notes', label: 'Master Notes' },
+        { id: 'tasks', label: 'Tasks' },
+        { id: 'evidence', label: 'Evidence' },
     ];
 
     return (
@@ -271,6 +273,7 @@ export default function CaseDetailPage() {
                                 evidenceItemId={activeTab.replace('evidence-notes-', '')}
                                 evidenceItems={evidenceItems}
                                 onEvidenceClick={handleEvidenceClick}
+                                onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
                             />
                         )}
                         {activeTab === 'iocs' && (
@@ -287,11 +290,19 @@ export default function CaseDetailPage() {
                                 onNavigate={handleNavigate}
                             />
                         )}
+                        {activeTab === 'tasks' && (
+                            <TaskListTab
+                                caseId={caseData.case_id}
+                                evidenceItems={evidenceItems}
+                                onNavigate={handleNavigate}
+                            />
+                        )}
                         {activeTab === 'notes' && (
                             <MasterNotesTab
                                 caseId={caseData.case_id}
                                 evidenceItems={evidenceItems}
                                 onEvidenceClick={handleEvidenceClick}
+                                onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
                             />
                         )}
                     </>

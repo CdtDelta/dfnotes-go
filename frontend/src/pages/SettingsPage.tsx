@@ -1,12 +1,115 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GetConfig, SaveConfig, GetDBPath, ChooseDirectory, GetBackupStatus, TriggerBackupNow } from '../../wailsjs/go/main/App';
+import { GetConfig, SaveConfig, GetDBPath, ChooseDirectory, GetBackupStatus, TriggerBackupNow, LoadTemplates, SaveTemplates } from '../../wailsjs/go/main/App';
 import { config, backup } from '../../wailsjs/go/models';
 import ErrorMessage from '../components/ErrorMessage';
 import DBLocationDialog from '../components/DBLocationDialog';
 import { useAuth } from '../context/AuthContext';
 
 const APP_VERSION = '0.4.0';
+
+const TPL_INPUT = 'w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-500';
+
+function TemplateEditor({
+    template,
+    onChange,
+    onSave,
+    onCancel,
+}: {
+    template: TaskTemplate;
+    onChange: (t: TaskTemplate) => void;
+    onSave: () => void;
+    onCancel: () => void;
+}) {
+    const updateTask = (idx: number, field: keyof TemplateTask, value: string) => {
+        const tasks = template.tasks.map((t, i) => i === idx ? { ...t, [field]: value } : t);
+        onChange({ ...template, tasks });
+    };
+    const addTask = () => onChange({ ...template, tasks: [...template.tasks, { title: '', description: '' }] });
+    const removeTask = (idx: number) => onChange({ ...template, tasks: template.tasks.filter((_, i) => i !== idx) });
+
+    return (
+        <div className="border border-gray-600 rounded-lg p-3 space-y-3 bg-gray-750">
+            <div>
+                <label className="block text-xs text-gray-400 mb-1">Template Name</label>
+                <input
+                    type="text"
+                    value={template.name}
+                    onChange={(e) => onChange({ ...template, name: e.target.value })}
+                    placeholder="e.g. Hard Drive Imaging"
+                    className={TPL_INPUT}
+                    autoFocus
+                />
+            </div>
+            <div className="space-y-2">
+                <label className="block text-xs text-gray-400">Tasks</label>
+                {template.tasks.map((task, idx) => (
+                    <div key={idx} className="flex gap-2 items-start">
+                        <div className="flex-1 space-y-1">
+                            <input
+                                type="text"
+                                value={task.title}
+                                onChange={(e) => updateTask(idx, 'title', e.target.value)}
+                                placeholder="Task title"
+                                className={TPL_INPUT}
+                            />
+                            <input
+                                type="text"
+                                value={task.description}
+                                onChange={(e) => updateTask(idx, 'description', e.target.value)}
+                                placeholder="Description (optional)"
+                                className={TPL_INPUT}
+                            />
+                        </div>
+                        <button
+                            onClick={() => removeTask(idx)}
+                            className="mt-1 text-gray-500 hover:text-red-400 transition-colors text-xs"
+                            title="Remove task"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                ))}
+                <button
+                    onClick={addTask}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                    + Add Task
+                </button>
+            </div>
+            <div className="flex gap-2">
+                <button
+                    onClick={onSave}
+                    className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                >
+                    Save Template
+                </button>
+                <button
+                    onClick={onCancel}
+                    className="px-3 py-1.5 text-xs border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
+
+interface TemplateTask {
+    title: string;
+    description: string;
+}
+
+interface TaskTemplate {
+    name: string;
+    tasks: TemplateTask[];
+}
+
+function emptyTemplate(): TaskTemplate {
+    return { name: '', tasks: [{ title: '', description: '' }] };
+}
 
 export default function SettingsPage() {
     const navigate = useNavigate();
@@ -20,6 +123,13 @@ export default function SettingsPage() {
     const [backupStatus, setBackupStatus] = useState<backup.Status | null>(null);
     const [backupMsg, setBackupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+    // Templates state
+    const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+    const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null); // null = new
+    const [confirmDeleteTpl, setConfirmDeleteTpl] = useState<number | null>(null);
+    const [tplError, setTplError] = useState('');
+
     const isDirty = cfg !== null && initialCfg !== null && (
         cfg.backup_enabled !== initialCfg.backup_enabled ||
         cfg.backup_dest_path !== initialCfg.backup_dest_path ||
@@ -28,12 +138,16 @@ export default function SettingsPage() {
     );
 
     useEffect(() => {
-        Promise.all([GetConfig(), GetDBPath(), GetBackupStatus()])
-            .then(([c, p, bs]) => {
+        Promise.all([GetConfig(), GetDBPath(), GetBackupStatus(), LoadTemplates()])
+            .then(([c, p, bs, tpls]) => {
                 setCfg(c);
                 setInitialCfg(c);
                 setDbPath(p);
                 setBackupStatus(bs);
+                setTemplates((tpls || []).map((t: config.TaskTemplate) => ({
+                    name: t.name,
+                    tasks: (t.tasks || []).map((tt: config.TemplateTask) => ({ title: tt.title, description: tt.description })),
+                })));
             })
             .catch((err: unknown) => setError(String(err)));
     }, []);
@@ -63,6 +177,36 @@ export default function SettingsPage() {
 
     const updateCfg = (patch: Partial<config.Config>) => {
         if (cfg) setCfg({ ...cfg, ...patch });
+    };
+
+    const saveTemplates = async (updated: TaskTemplate[]) => {
+        try {
+            await SaveTemplates(updated as config.TaskTemplate[]);
+            setTemplates(updated);
+            setTplError('');
+        } catch (err: unknown) {
+            setTplError(String(err));
+        }
+    };
+
+    const handleSaveTemplate = async () => {
+        if (!editingTemplate) return;
+        if (!editingTemplate.name.trim()) { setTplError('Template name is required.'); return; }
+        const updated = [...templates];
+        if (editingIndex === null) {
+            updated.push({ ...editingTemplate, name: editingTemplate.name.trim() });
+        } else {
+            updated[editingIndex] = { ...editingTemplate, name: editingTemplate.name.trim() };
+        }
+        await saveTemplates(updated);
+        setEditingTemplate(null);
+        setEditingIndex(null);
+    };
+
+    const handleDeleteTemplate = async (idx: number) => {
+        const updated = templates.filter((_, i) => i !== idx);
+        await saveTemplates(updated);
+        setConfirmDeleteTpl(null);
     };
 
     if (!cfg) {
@@ -205,6 +349,83 @@ export default function SettingsPage() {
                             </p>
                         )}
                     </div>
+                </div>
+            </section>
+
+            {/* Templates */}
+            <section className="mb-8">
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Templates</h2>
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">
+                    {tplError && (
+                        <p className="text-xs text-red-400">{tplError}</p>
+                    )}
+                    {templates.length === 0 && !editingTemplate && (
+                        <p className="text-sm text-gray-500">No templates yet.</p>
+                    )}
+                    {templates.map((tpl, idx) => (
+                        <div key={idx}>
+                            {confirmDeleteTpl === idx ? (
+                                <div className="flex items-center gap-3 py-1">
+                                    <span className="text-sm text-red-300">Delete "{tpl.name}"? Tasks already added to cases will not be affected.</span>
+                                    <button
+                                        onClick={() => handleDeleteTemplate(idx)}
+                                        className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
+                                    >
+                                        Delete
+                                    </button>
+                                    <button
+                                        onClick={() => setConfirmDeleteTpl(null)}
+                                        className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            ) : editingIndex === idx && editingTemplate ? (
+                                <TemplateEditor
+                                    template={editingTemplate}
+                                    onChange={setEditingTemplate}
+                                    onSave={handleSaveTemplate}
+                                    onCancel={() => { setEditingTemplate(null); setEditingIndex(null); setTplError(''); }}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-between py-1">
+                                    <span className="text-sm text-gray-200">{tpl.name} <span className="text-xs text-gray-500">({tpl.tasks.length} task{tpl.tasks.length !== 1 ? 's' : ''})</span></span>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => { setEditingTemplate({ ...tpl, tasks: tpl.tasks.map((t) => ({ ...t })) }); setEditingIndex(idx); setTplError(''); }}
+                                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmDeleteTpl(idx)}
+                                            className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+
+                    {editingIndex === null && editingTemplate ? (
+                        <TemplateEditor
+                            template={editingTemplate}
+                            onChange={setEditingTemplate}
+                            onSave={handleSaveTemplate}
+                            onCancel={() => { setEditingTemplate(null); setTplError(''); }}
+                        />
+                    ) : (
+                        !editingTemplate && (
+                            <button
+                                onClick={() => { setEditingTemplate(emptyTemplate()); setEditingIndex(null); setTplError(''); }}
+                                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                                + New Template
+                            </button>
+                        )
+                    )}
                 </div>
             </section>
 
