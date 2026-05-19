@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.4.5**
+**Version 0.4.7**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
