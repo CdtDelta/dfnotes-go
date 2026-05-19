@@ -46,3 +46,6 @@ frontend/node_modules/
 # Wails generated JS bindings
 frontend/wailsjs/
 MEMORY/
+
+# OS X icon generated in CI
+build/darwin/appicon.icns
