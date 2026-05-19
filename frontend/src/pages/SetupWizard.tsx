@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SetupIdentity, ConfirmTOTPSetup, InitializeDatabase, GetDefaultDBPath, ChooseDBSavePath, PointDatabase } from '../../wailsjs/go/main/App';
+import { ClipboardSetText } from '../../wailsjs/runtime/runtime';
 import { services } from '../../wailsjs/go/models';
 import { useAuth } from '../context/AuthContext';
 import ErrorMessage from '../components/ErrorMessage';
+import PasswordInput from '../components/PasswordInput';
 
 type Step = 'dbpath' | 'identity' | 'password' | 'totp' | 'recovery';
 
@@ -32,6 +34,16 @@ export default function SetupWizard() {
 
     const [showManual, setShowManual] = useState(false);
     const [savedCodes, setSavedCodes] = useState(false);
+
+    // Derived from totpURL -- extracted here so both the display and Copy button can reference it
+    const totpSecret = (() => {
+        try { return new URL(totpURL).searchParams.get('secret') || ''; }
+        catch { return ''; }
+    })();
+    const totpAccount = (() => {
+        try { return new URL(totpURL).pathname.split(':').pop() || name; }
+        catch { return name; }
+    })();
 
     useEffect(() => {
         GetDefaultDBPath()
@@ -307,19 +319,18 @@ export default function SetupWizard() {
                         </p>
                         <div>
                             <label className="block text-sm text-gray-400 mb-1">Password *</label>
-                            <input
-                                type="password"
+                            <PasswordInput
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
                                 placeholder="Minimum 8 characters"
                                 autoFocus
+                                showPaste
                             />
                         </div>
                         <div>
                             <label className="block text-sm text-gray-400 mb-1">Confirm Password *</label>
-                            <input
-                                type="password"
+                            <PasswordInput
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
@@ -383,18 +394,22 @@ export default function SetupWizard() {
                                 <div className="bg-gray-800 border border-gray-600 rounded p-3">
                                     <p className="text-xs text-gray-400 mb-1">Account</p>
                                     <p className="text-sm text-gray-200 mb-3 break-all">
-                                        {(() => {
-                                            try { return new URL(totpURL).pathname.split(':').pop() || name; }
-                                            catch { return name; }
-                                        })()}
+                                        {totpAccount}
                                     </p>
                                     <p className="text-xs text-gray-400 mb-1">Secret Key</p>
-                                    <p className="font-mono text-sm text-gray-100 break-all select-all">
-                                        {(() => {
-                                            try { return new URL(totpURL).searchParams.get('secret') || ''; }
-                                            catch { return ''; }
-                                        })()}
-                                    </p>
+                                    <div className="flex items-start gap-2">
+                                        <p className="font-mono text-sm text-gray-100 break-all select-all flex-1">
+                                            {totpSecret}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => ClipboardSetText(totpSecret)}
+                                            className="text-xs px-2 py-0.5 rounded shrink-0 hover:opacity-75 transition-opacity"
+                                            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
                                     <p className="text-xs text-gray-400 mt-3 mb-1">Type</p>
                                     <p className="text-sm text-gray-200">Time-based (TOTP)</p>
                                 </div>
@@ -440,6 +455,16 @@ export default function SetupWizard() {
                             {recoveryCodes.map((code, i) => (
                                 <div key={i} className="text-gray-200">{code}</div>
                             ))}
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => ClipboardSetText(recoveryCodes.join('\n'))}
+                                className="text-xs px-2 py-0.5 rounded hover:opacity-75 transition-opacity"
+                                style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
+                            >
+                                Copy All
+                            </button>
                         </div>
                         <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                             <input

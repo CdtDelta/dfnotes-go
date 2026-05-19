@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreateCase, GetUserInfo } from '../../wailsjs/go/main/App';
 import ErrorMessage from '../components/ErrorMessage';
+import PasswordInput from '../components/PasswordInput';
 
 const CLASSIFICATIONS = [
     'UNCLASSIFIED',
@@ -182,18 +183,17 @@ export default function CaseCreatePage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm text-gray-400 mb-1">Case Password *</label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     value={casePassword}
                                     onChange={(e) => setCasePassword(e.target.value)}
                                     className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
                                     placeholder="Minimum 8 characters"
+                                    showPaste
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm text-gray-400 mb-1">Confirm Password *</label>
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     value={confirmCasePassword}
                                     onChange={(e) => setConfirmCasePassword(e.target.value)}
                                     className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"

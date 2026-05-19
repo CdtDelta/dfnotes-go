@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background rounded square -->
+  <rect x="0" y="0" width="512" height="512" rx="80" fill="#0d1929"/>
+
+  <!-- Document body -->
+  <rect x="136" y="68" width="240" height="310" rx="14" fill="#142338" stroke="#1e3a5f" stroke-width="1.5"/>
+
+  <!-- Document header accent bar -->
+  <rect x="163" y="108" width="140" height="9" rx="4.5" fill="#00b4d8" opacity="0.95"/>
+
+  <!-- Document text lines -->
+  <rect x="163" y="133" width="165" height="7" rx="3.5" fill="#2a3f58"/>
+  <rect x="163" y="152" width="130" height="7" rx="3.5" fill="#2a3f58"/>
+  <rect x="163" y="171" width="150" height="7" rx="3.5" fill="#2a3f58"/>
+
+  <rect x="163" y="198" width="110" height="7" rx="3.5" fill="#2a3f58"/>
+  <rect x="163" y="217" width="145" height="7" rx="3.5" fill="#2a3f58"/>
+  <rect x="163" y="236" width="120" height="7" rx="3.5" fill="#2a3f58"/>
+
+  <!-- IOC-style highlighted lines (teal, lower section) -->
+  <rect x="163" y="263" width="75" height="7" rx="3.5" fill="#00b4d8" opacity="0.55"/>
+  <rect x="163" y="282" width="95" height="7" rx="3.5" fill="#00b4d8" opacity="0.38"/>
+
+  <!-- Left accent bar (chain indicator) -->
+  <rect x="133" y="255" width="5" height="75" rx="2.5" fill="#00b4d8" opacity="0.45"/>
+
+  <!-- Lock circle background -->
+  <circle cx="256" cy="350" r="82" fill="#0d1929" stroke="#1e3a5f" stroke-width="1.5"/>
+
+  <!-- Padlock shackle -->
+  <path d="M226 330 L226 313 C226 292 286 292 286 313 L286 330" fill="none" stroke="#00b4d8" stroke-width="9" stroke-linecap="round"/>
+
+  <!-- Padlock body -->
+  <rect x="220" y="328" width="72" height="48" rx="10" fill="none" stroke="#00b4d8" stroke-width="9"/>
+
+  <!-- Keyhole -->
+  <circle cx="256" cy="349" r="7" fill="#00b4d8"/>
+  <rect x="251" y="349" width="10" height="16" rx="5" fill="#00b4d8"/>
+
+  <!-- Verified badge (bottom-right) -->
+  <circle cx="310" cy="395" r="20" fill="#0a4a2e" stroke="#00c896" stroke-width="2.5"/>
+  <path d="M301 395 L307 402 L320 386" fill="none" stroke="#00c896" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Subtle border on outer rounded square -->
+  <rect x="0" y="0" width="512" height="512" rx="80" fill="none" stroke="#1e3a5f" stroke-width="1.5"/>
+</svg>

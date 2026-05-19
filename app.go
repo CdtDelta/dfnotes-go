@@ -747,3 +747,4 @@ func (a *App) AttachImage(caseID string) (*services.AttachmentResponse, error) {
 		Data:        base64.StdEncoding.EncodeToString(data),
 	})
 }
+

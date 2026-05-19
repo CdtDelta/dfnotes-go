@@ -13,6 +13,7 @@ import TimelineTab from '../components/TimelineTab';
 import TaskListTab from '../components/TaskListTab';
 import ErrorMessage from '../components/ErrorMessage';
 import ExportDialog from '../components/ExportDialog';
+import PasswordInput from '../components/PasswordInput';
 
 type PageState = 'loading' | 'locked' | 'unlocked';
 
@@ -220,14 +221,14 @@ export default function CaseDetailPage() {
                                 <p className="text-sm text-gray-400 mt-1">Enter the case password to unlock</p>
                             </div>
                             <div className="space-y-4">
-                                <input
-                                    type="password"
+                                <PasswordInput
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     onKeyDown={handlePasswordKeyDown}
                                     placeholder="Case password"
                                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600"
                                     autoFocus
+                                    showPaste
                                 />
                                 <button
                                     onClick={handleUnlock}

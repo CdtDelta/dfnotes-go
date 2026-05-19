@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExportCase, ChooseExportSavePath } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
+import PasswordInput from './PasswordInput';
 
 type Stage = 'password' | 'progress' | 'complete' | 'error';
 
@@ -95,13 +96,13 @@ export default function ExportDialog({ caseID, caseNumber, onClose }: ExportDial
 
                         <div>
                             <label className="block text-xs text-gray-400 mb-1">Archive password</label>
-                            <input
-                                type="password"
+                            <PasswordInput
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:border-blue-500"
                                 autoFocus
                                 onKeyDown={e => e.key === 'Enter' && handleExport()}
+                                showPaste
                             />
                             {strength.label && (
                                 <p className={`text-xs mt-1 ${strength.color}`}>Strength: {strength.label}</p>
@@ -110,8 +111,7 @@ export default function ExportDialog({ caseID, caseNumber, onClose }: ExportDial
 
                         <div>
                             <label className="block text-xs text-gray-400 mb-1">Confirm password</label>
-                            <input
-                                type="password"
+                            <PasswordInput
                                 value={confirm}
                                 onChange={e => setConfirm(e.target.value)}
                                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:border-blue-500"
