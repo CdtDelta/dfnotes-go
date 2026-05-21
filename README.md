@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.4.7**
+**Version 0.5.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -101,6 +101,16 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Once extracted, archive contents are not encrypted -- handle according to your organization's data handling policy
 - Export logged in the audit trail
 
+### PDF Export
+- Full case PDF export via File > Export PDF (Cmd+P)
+- Classification level header and footer on every page, color-coded by level
+- Sections: cover page, table of contents, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
+- Note blocks rendered with full verification hash (SHA-256, labeled "Verification Hash:"), commitment timestamp, and block ID
+- Chain verification section includes an explanatory statement, chain-intact summary, and per-block signature and hash validation table
+- IOC values displayed defanged throughout
+- SHA-256 sidecar file written alongside the PDF for integrity verification
+- Export logged in the audit trail
+
 ### Database Location
 - Database location is configurable at first launch and changeable at any time in Settings
 - Move: closes connection, copies file, verifies integrity via SHA-256, deletes original, reopens at new path
@@ -173,6 +183,23 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.5.0 (2026-05-21)
+
+**PDF Export**
+- Full case PDF export via File > Export PDF (Cmd+P)
+- Classification level displayed as a color-coded header and footer bar on every page (green through dark red depending on level)
+- Cover page with case metadata, examiner info, export timestamp, and dfnotes-go version
+- Table of contents with page numbers
+- Master Notes section: all committed blocks in chain order, each with verification hash (full SHA-256, labeled), commitment timestamp, block ID, and verification status; TAMPERED blocks shown in red
+- Evidence Items section: per-item metadata, custody log, and committed note blocks
+- IOC Summary section: confirmed and detected IOCs in a monospace table with defanged values; dismissed IOCs in a separate sub-table in gray
+- Timeline section: record-block format with timestamp, optional secondary timezone, event description, and investigator notes
+- Task List section: grouped by evidence item then by status (Open first, Not Applicable last); each task shows title, status, description, completion timestamp if applicable, and linked block references with committed timestamp and block ID
+- Chain Verification section: explanatory statement, chain-intact summary line, per-block validation table in monospace with red text for any failed rows
+- Appendix A: all image attachments from committed note blocks, labeled with source block ID and timestamp; image placeholders in note body reference the appendix
+- SHA-256 sidecar file written alongside the PDF (same format as sha256sum output)
+- Export logged in the audit trail
 
 ### v0.4.5 (2026-05-19)
 

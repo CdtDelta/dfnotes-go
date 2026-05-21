@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GetConfig, SaveConfig, GetDBPath, ChooseDirectory, GetBackupStatus, TriggerBackupNow, LoadTemplates, SaveTemplates } from '../../wailsjs/go/main/App';
+import { GetConfig, SaveConfig, GetDBPath, ChooseDirectory, GetBackupStatus, TriggerBackupNow, LoadTemplates, SaveTemplates, GetVersion } from '../../wailsjs/go/main/App';
 import { config, backup } from '../../wailsjs/go/models';
 import ErrorMessage from '../components/ErrorMessage';
 import DBLocationDialog from '../components/DBLocationDialog';
 import { useAuth } from '../context/AuthContext';
-
-const APP_VERSION = '0.4.0';
 
 const TPL_INPUT = 'w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-500';
 
@@ -122,6 +120,7 @@ export default function SettingsPage() {
     const [showDBDialog, setShowDBDialog] = useState(false);
     const [backupStatus, setBackupStatus] = useState<backup.Status | null>(null);
     const [backupMsg, setBackupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [appVersion, setAppVersion] = useState('');
 
     // Templates state
     const [templates, setTemplates] = useState<TaskTemplate[]>([]);
@@ -138,12 +137,13 @@ export default function SettingsPage() {
     );
 
     useEffect(() => {
-        Promise.all([GetConfig(), GetDBPath(), GetBackupStatus(), LoadTemplates()])
-            .then(([c, p, bs, tpls]) => {
+        Promise.all([GetConfig(), GetDBPath(), GetBackupStatus(), LoadTemplates(), GetVersion()])
+            .then(([c, p, bs, tpls, ver]) => {
                 setCfg(c);
                 setInitialCfg(c);
                 setDbPath(p);
                 setBackupStatus(bs);
+                setAppVersion(ver);
                 setTemplates((tpls || []).map((t: config.TaskTemplate) => ({
                     name: t.name,
                     tasks: (t.tasks || []).map((tt: config.TemplateTask) => ({ title: tt.title, description: tt.description })),
@@ -433,7 +433,7 @@ export default function SettingsPage() {
             <section className="mb-8">
                 <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">About</h2>
                 <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                    <p className="text-sm text-gray-300">dfnotes-go <span className="text-gray-500">v{APP_VERSION}</span></p>
+                    <p className="text-sm text-gray-300">dfnotes-go <span className="text-gray-500">v{appVersion}</span></p>
                     <p className="text-sm text-gray-400 mt-1">Digital Forensic Notebook</p>
                 </div>
             </section>

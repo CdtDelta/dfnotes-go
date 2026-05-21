@@ -21,6 +21,9 @@ func createMenu(app *App) *menu.Menu {
 	fileMenu.AddText("Export Case", nil, func(_ *menu.CallbackData) {
 		app.handleExportCaseMenu()
 	})
+	fileMenu.AddText("Export PDF", keys.CmdOrCtrl("p"), func(_ *menu.CallbackData) {
+		app.handleExportPDFMenu()
+	})
 	fileMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
 		wailsruntime.EventsEmit(app.ctx, "menu:settings")
 	})
@@ -46,7 +49,7 @@ func createMenu(app *App) *menu.Menu {
 		wailsruntime.MessageDialog(app.ctx, wailsruntime.MessageDialogOptions{
 			Type:    wailsruntime.InfoDialog,
 			Title:   "About DFNotes",
-			Message: "DFNotes - Digital Forensic Notebook\nSecure, tamper-evident case notes.",
+			Message: "DFNotes - Digital Forensic Notebook\nVersion " + AppVersion + "\nSecure, tamper-evident case notes.",
 		})
 	})
 

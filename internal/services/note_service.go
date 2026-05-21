@@ -121,6 +121,16 @@ func (s *NoteService) HasActiveCases() bool {
 	return len(s.caseKeys) > 0
 }
 
+// FirstActiveCaseID returns the ID of the first unlocked case, or "" if none.
+func (s *NoteService) FirstActiveCaseID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for id := range s.caseKeys {
+		return id
+	}
+	return ""
+}
+
 func (s *NoteService) LockCase(ctx context.Context, caseID string) error {
 	if !s.session.IsAuthenticated() {
 		return errors.New("not authenticated")

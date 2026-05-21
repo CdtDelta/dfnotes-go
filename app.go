@@ -2,24 +2,30 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"mime"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"dfnotes-go/internal/backup"
 	"dfnotes-go/internal/config"
 	"dfnotes-go/internal/database"
 	"dfnotes-go/internal/export"
+	exportpdf "dfnotes-go/internal/export/pdf"
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+const AppVersion = "0.5.0"
 
 type App struct {
 	ctx             context.Context
@@ -495,6 +501,11 @@ func (a *App) TriggerBackupNow() error {
 	return a.backupScheduler.RunNow()
 }
 
+// GetVersion returns the application version string.
+func (a *App) GetVersion() string {
+	return AppVersion
+}
+
 // GetConfig returns the current application configuration.
 func (a *App) GetConfig() config.Config {
 	return *a.cfg
@@ -745,6 +756,202 @@ func (a *App) AttachImage(caseID string) (*services.AttachmentResponse, error) {
 		Filename:    filename,
 		ContentType: contentType,
 		Data:        base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+var reAttachmentID = regexp.MustCompile(`attachment:([a-f0-9-]{36})`)
+
+// handleExportPDFMenu is called from the native menu callback.
+func (a *App) handleExportPDFMenu() {
+	if a.noteService == nil || !a.noteService.HasActiveCases() {
+		wailsruntime.MessageDialog(a.ctx, wailsruntime.MessageDialogOptions{
+			Type:    wailsruntime.InfoDialog,
+			Title:   "Export PDF",
+			Message: "No case is currently open. Open and unlock a case before exporting.",
+		})
+		return
+	}
+	go a.runExportCasePDF()
+}
+
+// ExportCasePDF generates a PDF of the currently unlocked case, shows a save dialog,
+// writes the file, and writes a SHA-256 sidecar.
+func (a *App) ExportCasePDF() error {
+	if a.noteService == nil || !a.noteService.HasActiveCases() {
+		return fmt.Errorf("no case is currently unlocked")
+	}
+	go a.runExportCasePDF()
+	return nil
+}
+
+func (a *App) runExportCasePDF() {
+	ctx := a.ctx
+
+	caseID := a.noteService.FirstActiveCaseID()
+	if caseID == "" {
+		wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+			Type:    wailsruntime.ErrorDialog,
+			Title:   "Export PDF",
+			Message: "No case is currently unlocked.",
+		})
+		return
+	}
+
+	// Collect all data (same pattern as ExportCase)
+	caseData, err := a.caseService.GetCase(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "get case: "+err.Error())
+		return
+	}
+
+	defaultName := strings.ReplaceAll(caseData.CaseNumber, " ", "_") + "_case_export.pdf"
+	defaultDir := filepath.Dir(a.cfg.DatabasePath)
+
+	destPath, err := wailsruntime.SaveFileDialog(ctx, wailsruntime.SaveDialogOptions{
+		Title:            "Save PDF Export",
+		DefaultDirectory: defaultDir,
+		DefaultFilename:  defaultName,
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "PDF Document", Pattern: "*.pdf"},
+		},
+	})
+	if err != nil || destPath == "" {
+		return
+	}
+
+	evidenceItems, err := a.evidenceService.ListEvidence(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "list evidence: "+err.Error())
+		return
+	}
+
+	masterBlocks, err := a.noteService.ListNotes(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "list notes: "+err.Error())
+		return
+	}
+
+	evidenceBlockMap := make(map[string][]services.NoteBlockResponse, len(evidenceItems))
+	for _, item := range evidenceItems {
+		blocks, err := a.noteService.ListEvidenceNotes(ctx, caseID, item.EvidenceItemID)
+		if err != nil {
+			showPDFError(ctx, "list evidence notes: "+err.Error())
+			return
+		}
+		evidenceBlockMap[item.EvidenceItemID] = blocks
+	}
+
+	rawBlocks, err := a.noteBlockRepo.ListByCase(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "list raw blocks: "+err.Error())
+		return
+	}
+
+	iocEntries, err := a.iocService.GetCaseIOCs(ctx, caseID, true)
+	if err != nil {
+		showPDFError(ctx, "get IOCs: "+err.Error())
+		return
+	}
+
+	timelineEntries, err := a.timelineService.GetTimelineEntries(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "get timeline: "+err.Error())
+		return
+	}
+
+	taskList, err := a.taskService.ListTasks(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "get tasks: "+err.Error())
+		return
+	}
+
+	user, err := a.identityService.GetFirstUser(ctx)
+	if err != nil {
+		showPDFError(ctx, "get user: "+err.Error())
+		return
+	}
+
+	// Pre-fetch all attachment images referenced in note content
+	attachments := make(map[string]*exportpdf.AttachmentInfo)
+	allBlockContents := make([]string, 0, len(masterBlocks))
+	for _, b := range masterBlocks {
+		allBlockContents = append(allBlockContents, b.Content)
+	}
+	for _, blocks := range evidenceBlockMap {
+		for _, b := range blocks {
+			allBlockContents = append(allBlockContents, b.Content)
+		}
+	}
+	for _, content := range allBlockContents {
+		matches := reAttachmentID.FindAllStringSubmatch(content, -1)
+		for _, m := range matches {
+			id := m[1]
+			if _, seen := attachments[id]; seen {
+				continue
+			}
+			resp, err := a.noteService.GetAttachment(ctx, caseID, id)
+			if err != nil {
+				log.Printf("PDF export: get attachment %s: %v", id, err)
+				continue
+			}
+			data, err := base64.StdEncoding.DecodeString(resp.Data)
+			if err != nil {
+				log.Printf("PDF export: decode attachment %s: %v", id, err)
+				continue
+			}
+			attachments[id] = &exportpdf.AttachmentInfo{
+				Data:        data,
+				ContentType: resp.ContentType,
+				Filename:    resp.Filename,
+			}
+		}
+	}
+
+	req := exportpdf.PDFRequest{
+		CaseData:         caseData,
+		ExaminerName:     user.Name,
+		EvidenceItems:    evidenceItems,
+		MasterBlocks:     masterBlocks,
+		EvidenceBlockMap: evidenceBlockMap,
+		RawBlocks:        rawBlocks,
+		IOCEntries:       iocEntries,
+		TimelineEntries:  timelineEntries,
+		Tasks:            taskList,
+		Attachments:      attachments,
+		AppVersion:       AppVersion,
+	}
+
+	pdfBytes, err := exportpdf.GenerateCasePDF(req)
+	if err != nil {
+		showPDFError(ctx, "generate PDF: "+err.Error())
+		return
+	}
+
+	if err := os.WriteFile(destPath, pdfBytes, 0o600); err != nil {
+		showPDFError(ctx, "write PDF: "+err.Error())
+		return
+	}
+
+	// Write SHA-256 sidecar
+	sum := sha256.Sum256(pdfBytes)
+	sidecarContent := hex.EncodeToString(sum[:]) + "  " + filepath.Base(destPath) + "\n"
+	sidecarPath := destPath + ".sha256"
+	if err := os.WriteFile(sidecarPath, []byte(sidecarContent), 0o600); err != nil {
+		log.Printf("PDF export: write sidecar: %v", err)
+	}
+
+	wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+		Type:    wailsruntime.InfoDialog,
+		Title:   "Export PDF",
+		Message: "PDF exported to: " + destPath,
+	})
+}
+
+func showPDFError(ctx context.Context, msg string) {
+	wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+		Type:    wailsruntime.ErrorDialog,
+		Title:   "Export PDF Failed",
+		Message: msg,
 	})
 }
 
