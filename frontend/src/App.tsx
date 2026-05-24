@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HashRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -15,23 +15,16 @@ import CaseCreatePage from './pages/CaseCreatePage';
 import CaseDetailPage from './pages/CaseDetailPage';
 import SettingsPage from './pages/SettingsPage';
 
-function MenuHandler() {
-    const navigate = useNavigate();
-
-    useEffect(() => {
-        const cleanupSettings = EventsOn('menu:settings', () => {
-            navigate('/settings');
-        });
-        return cleanupSettings;
-    }, [navigate]);
-
-    return null;
-}
-
 function AppRouter() {
     const { appState } = useAuth();
     const [showThemePicker, setShowThemePicker] = useState(false);
     const [showHelpDialog, setShowHelpDialog] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+
+    useEffect(() => {
+        const cleanup = EventsOn('menu:settings', () => setSettingsOpen(true));
+        return cleanup;
+    }, []);
 
     useEffect(() => {
         const cleanup = EventsOn('menu:theme', () => setShowThemePicker(true));
@@ -61,15 +54,14 @@ function AppRouter() {
 
     return (
         <HashRouter>
-            <MenuHandler />
             <BackupNotification />
             {showThemePicker && <ThemePicker onClose={() => setShowThemePicker(false)} />}
             {showHelpDialog && <HelpDialog onClose={() => setShowHelpDialog(false)} />}
+            {settingsOpen && <SettingsPage onClose={() => setSettingsOpen(false)} />}
             <Routes>
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/cases/new" element={<CaseCreatePage />} />
                 <Route path="/cases/:caseId" element={<CaseDetailPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
             </Routes>
         </HashRouter>
     );

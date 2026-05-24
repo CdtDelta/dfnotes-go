@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dfnotes-go/internal/models"
+	"dfnotes-go/internal/timer"
 
 	"github.com/google/uuid"
 )
@@ -13,12 +14,14 @@ import (
 type TimelineService struct {
 	timelineRepo models.TimelineRepository
 	session      *Session
+	timerService timer.Service
 }
 
-func NewTimelineService(timelineRepo models.TimelineRepository, session *Session) *TimelineService {
+func NewTimelineService(timelineRepo models.TimelineRepository, session *Session, timerService timer.Service) *TimelineService {
 	return &TimelineService{
 		timelineRepo: timelineRepo,
 		session:      session,
+		timerService: timerService,
 	}
 }
 
@@ -60,6 +63,7 @@ func (s *TimelineService) CreateTimelineEntry(ctx context.Context, req models.Cr
 	if err := s.timelineRepo.Create(ctx, entry); err != nil {
 		return nil, err
 	}
+	s.timerService.ResetFull()
 	return entry, nil
 }
 
@@ -91,6 +95,7 @@ func (s *TimelineService) UpdateTimelineEntry(ctx context.Context, req models.Up
 	if err := s.timelineRepo.Update(ctx, entry); err != nil {
 		return nil, err
 	}
+	s.timerService.ResetFull()
 	return entry, nil
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GetCase, UnlockCase, LockCase, ListEvidence } from '../../wailsjs/go/main/App';
+import { GetCase, UnlockCase, LockCase, ListEvidence, IsDocReminderPaused } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { services } from '../../wailsjs/go/models';
 import ClassificationBadge from '../components/ClassificationBadge';
@@ -14,6 +14,8 @@ import TaskListTab from '../components/TaskListTab';
 import ErrorMessage from '../components/ErrorMessage';
 import ExportDialog from '../components/ExportDialog';
 import PasswordInput from '../components/PasswordInput';
+import DocReminderModal from '../components/DocReminderModal';
+import DocReminderPausedBanner from '../components/DocReminderPausedBanner';
 
 type PageState = 'loading' | 'locked' | 'unlocked';
 
@@ -29,10 +31,24 @@ export default function CaseDetailPage() {
     const [unlocking, setUnlocking] = useState(false);
     const [evidenceItems, setEvidenceItems] = useState<services.EvidenceResponse[]>([]);
     const [showExportDialog, setShowExportDialog] = useState(false);
+    const [reminderVisible, setReminderVisible] = useState(false);
+    const [minutesElapsed, setMinutesElapsed] = useState(0);
+    const [reminderPaused, setReminderPaused] = useState(false);
 
     // Always-current ref so the unmount cleanup can read the latest pageState
     const pageStateRef = useRef<PageState>('loading');
     useEffect(() => { pageStateRef.current = pageState; });
+
+    const reminderCleanupRef = useRef<(() => void) | null>(null);
+
+    const teardownReminder = useCallback(() => {
+        if (reminderCleanupRef.current) {
+            reminderCleanupRef.current();
+            reminderCleanupRef.current = null;
+        }
+        setReminderVisible(false);
+        setReminderPaused(false);
+    }, []);
 
     // Auto-lock when navigating away while the case is unlocked so caseKeys
     // are never left populated after the user leaves the case page.
@@ -41,8 +57,9 @@ export default function CaseDetailPage() {
             if (pageStateRef.current === 'unlocked' && caseId) {
                 LockCase(caseId).catch(() => {});
             }
+            teardownReminder();
         };
-    }, [caseId]);
+    }, [caseId, teardownReminder]);
 
     const fetchEvidenceItems = useCallback(() => {
         if (!caseId) return;
@@ -73,6 +90,13 @@ export default function CaseDetailPage() {
             setPassword('');
             setPageState('unlocked');
             fetchEvidenceItems();
+
+            reminderCleanupRef.current = EventsOn('doc:reminder:fired', (payload: { minutesElapsed: number }) => {
+                setMinutesElapsed(payload.minutesElapsed);
+                setReminderVisible(true);
+            });
+            const paused = await IsDocReminderPaused();
+            setReminderPaused(paused);
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -84,6 +108,7 @@ export default function CaseDetailPage() {
         if (!caseId) return;
         try {
             await LockCase(caseId);
+            teardownReminder();
             setPageState('locked');
             setActiveTab('overview');
         } catch (err: unknown) {
@@ -130,6 +155,7 @@ export default function CaseDetailPage() {
             if (pageState === 'unlocked' && caseId) {
                 LockCase(caseId)
                     .then(() => {
+                        teardownReminder();
                         setPageState('locked');
                         setActiveTab('overview');
                     })
@@ -265,6 +291,10 @@ export default function CaseDetailPage() {
                             ))}
                         </nav>
 
+                        {reminderPaused && (
+                            <DocReminderPausedBanner onResume={() => setReminderPaused(false)} />
+                        )}
+
                         {/* Tab Content */}
                         {activeTab === 'overview' && <CaseOverviewTab caseData={caseData} />}
                         {activeTab === 'evidence' && <EvidenceTab caseId={caseData.case_id} onEvidenceChanged={fetchEvidenceItems} />}
@@ -316,6 +346,19 @@ export default function CaseDetailPage() {
                 caseID={caseId}
                 caseNumber={caseData.case_number}
                 onClose={() => setShowExportDialog(false)}
+            />
+        )}
+
+        {reminderVisible && (
+            <DocReminderModal
+                minutesElapsed={minutesElapsed}
+                onClose={() => {
+                    setReminderVisible(false);
+                    if (!activeTab.startsWith('evidence-notes-')) {
+                        setActiveTab('notes');
+                    }
+                }}
+                onPause={() => setReminderPaused(true)}
             />
         )}
         </>

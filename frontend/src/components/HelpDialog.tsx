@@ -394,6 +394,57 @@ const helpSections: HelpSection[] = [
         ),
     },
     {
+        title: 'Documentation Reminder',
+        content: (
+            <div className="help-text">
+                <p>
+                    The documentation reminder fires a modal alert when too much time has passed without
+                    committing a note, adding a timeline entry, or recording a custody action. It is designed
+                    to prevent tunnel vision during long analysis sessions -- getting absorbed in examination
+                    and letting documentation slip.
+                </p>
+                <h3>Enabling and Configuring</h3>
+                <p>
+                    Open File &gt; Settings and find the <strong>Documentation Reminder</strong> section.
+                    Enable the toggle and set the interval in minutes (default: 30). An inline warning
+                    appears when the interval is below 30 minutes but does not block saving.
+                </p>
+                <h3>What Resets the Timer</h3>
+                <ul>
+                    <li><strong>Full reset</strong> (restarts at the full interval): committing a note block,
+                        adding a timeline entry, editing a timeline entry</li>
+                    <li><strong>Partial reset</strong> (restarts at half the interval): changing an evidence
+                        item's status, adding a manual custody log entry</li>
+                </ul>
+                <h3>When the Reminder Fires</h3>
+                <p>
+                    The application window comes to the foreground and a modal appears showing how many
+                    minutes have elapsed since the last documentation action. Four actions are available:
+                </p>
+                <ul>
+                    <li><strong>Document Now</strong> -- closes the modal and moves focus to the note editor
+                        in the active tab. Does not reset the timer -- only an actual commit does that.</li>
+                    <li><strong>Snooze 15 min</strong> -- dismisses the reminder for 15 minutes, then restarts
+                        at the full interval</li>
+                    <li><strong>Snooze 30 min</strong> -- dismisses the reminder for 30 minutes, then restarts
+                        at the full interval</li>
+                    <li><strong>Pause reminders</strong> -- suspends all reminders for the rest of the session</li>
+                </ul>
+                <h3>Pause Indicator</h3>
+                <p>
+                    When reminders are paused, a bar appears below the case tab bar reading
+                    "Documentation reminders paused." Click <strong>Resume</strong> to re-enable them.
+                    The pause state clears automatically when the case is locked -- the next unlock starts fresh.
+                </p>
+                <h3>Timer Scope</h3>
+                <p>
+                    The timer runs only while a case is unlocked. It does not run on the dashboard,
+                    login screen, or setup wizard. Opening Settings does not interrupt the timer.
+                </p>
+            </div>
+        ),
+    },
+    {
         title: 'Tips and Shortcuts',
         content: (
             <div className="help-text">

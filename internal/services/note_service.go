@@ -12,6 +12,7 @@ import (
 
 	"dfnotes-go/internal/crypto"
 	"dfnotes-go/internal/models"
+	"dfnotes-go/internal/timer"
 
 	"github.com/google/uuid"
 )
@@ -59,6 +60,7 @@ type NoteService struct {
 	auditRepo      models.AuditLogRepository
 	attachmentRepo models.AttachmentRepository
 	session        *Session
+	timerService   timer.Service
 	mu             sync.RWMutex
 	caseKeys       map[string][]byte // caseID → decrypted case key
 }
@@ -69,6 +71,7 @@ func NewNoteService(
 	auditRepo models.AuditLogRepository,
 	attachmentRepo models.AttachmentRepository,
 	session *Session,
+	timerService timer.Service,
 ) *NoteService {
 	return &NoteService{
 		noteBlockRepo:  noteBlockRepo,
@@ -76,6 +79,7 @@ func NewNoteService(
 		auditRepo:      auditRepo,
 		attachmentRepo: attachmentRepo,
 		session:        session,
+		timerService:   timerService,
 		caseKeys:       make(map[string][]byte),
 	}
 }
@@ -231,6 +235,8 @@ func (s *NoteService) CommitNote(ctx context.Context, req CommitNoteRequest) (*N
 	if err := s.noteBlockRepo.Create(ctx, block); err != nil {
 		return nil, err
 	}
+
+	s.timerService.ResetFull()
 
 	// Audit log
 	details, _ := json.Marshal(map[string]string{

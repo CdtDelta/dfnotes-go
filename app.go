@@ -21,11 +21,17 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/timer"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.5.0"
+const AppVersion = "0.6.0"
+
+type DocReminderSettings struct {
+	Enabled         bool `json:"enabled"`
+	IntervalMinutes int  `json:"intervalMinutes"`
+}
 
 type App struct {
 	ctx             context.Context
@@ -41,6 +47,7 @@ type App struct {
 	iocService      *ioc.IOCService
 	timelineService *services.TimelineService
 	taskService     *services.TaskService
+	timerService    timer.Service
 	backupScheduler *backup.Scheduler
 	noteBlockRepo   models.NoteBlockRepository
 }
@@ -94,14 +101,21 @@ func (a *App) openDatabase(path string) error {
 	timelineRepo := database.NewTimelineRepo(db)
 	taskRepo := database.NewTaskRepo(db)
 
+	if a.timerService != nil {
+		a.timerService.Stop()
+	}
+	a.timerService = timer.New(a.cfg, func(minutesElapsed int) {
+		wailsruntime.EventsEmit(a.ctx, "doc:reminder:fired", map[string]int{"minutesElapsed": minutesElapsed})
+	})
+
 	a.session = services.NewSession()
 	a.identityService = services.NewIdentityService(userRepo, auditRepo, a.session)
 	a.caseService = services.NewCaseService(caseRepo, auditRepo, a.session)
-	a.noteService = services.NewNoteService(noteBlockRepo, caseRepo, auditRepo, attachmentRepo, a.session)
-	a.evidenceService = services.NewEvidenceService(evidenceRepo, auditRepo, a.session)
+	a.noteService = services.NewNoteService(noteBlockRepo, caseRepo, auditRepo, attachmentRepo, a.session, a.timerService)
+	a.evidenceService = services.NewEvidenceService(evidenceRepo, auditRepo, a.session, a.timerService)
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.iocService = ioc.NewIOCService(iocRepo)
-	a.timelineService = services.NewTimelineService(timelineRepo, a.session)
+	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService)
 	a.taskService = services.NewTaskService(taskRepo, a.noteService, a.session)
 	a.noteBlockRepo = noteBlockRepo
 	return nil
@@ -188,12 +202,24 @@ func (a *App) GetCase(id string) (*services.CaseResponse, error) {
 
 // UnlockCase unlocks a case with the case-specific password.
 func (a *App) UnlockCase(req services.UnlockCaseRequest) error {
-	return a.noteService.UnlockCase(a.ctx, req)
+	if err := a.noteService.UnlockCase(a.ctx, req); err != nil {
+		return err
+	}
+	if a.timerService != nil {
+		a.timerService.Start()
+	}
+	return nil
 }
 
 // LockCase locks a case, zeroing its key material.
 func (a *App) LockCase(caseID string) error {
-	return a.noteService.LockCase(a.ctx, caseID)
+	if err := a.noteService.LockCase(a.ctx, caseID); err != nil {
+		return err
+	}
+	if a.timerService != nil {
+		a.timerService.Stop()
+	}
+	return nil
 }
 
 func (a *App) startBackupScheduler() {
@@ -953,5 +979,59 @@ func showPDFError(ctx context.Context, msg string) {
 		Title:   "Export PDF Failed",
 		Message: msg,
 	})
+}
+
+// SnoozeDockReminder snoozes the documentation reminder for the given number of minutes.
+func (a *App) SnoozeDockReminder(minutes int) {
+	if a.timerService != nil {
+		a.timerService.Snooze(minutes)
+	}
+}
+
+// PauseDocReminder pauses documentation reminders for the current session.
+func (a *App) PauseDocReminder() {
+	if a.timerService != nil {
+		a.timerService.Pause()
+	}
+}
+
+// ResumeDocReminder resumes documentation reminders after a pause.
+func (a *App) ResumeDocReminder() {
+	if a.timerService != nil {
+		a.timerService.Resume()
+	}
+}
+
+// IsDocReminderPaused returns whether documentation reminders are currently paused.
+func (a *App) IsDocReminderPaused() bool {
+	if a.timerService != nil {
+		return a.timerService.IsPaused()
+	}
+	return false
+}
+
+// SaveDocReminderSettings validates, saves, and applies new reminder settings.
+func (a *App) SaveDocReminderSettings(enabled bool, intervalMinutes int) error {
+	if intervalMinutes < 1 {
+		return fmt.Errorf("reminder interval must be at least 1 minute")
+	}
+	a.cfg.DocReminderEnabled = enabled
+	a.cfg.DocReminderIntervalMinutes = intervalMinutes
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	if a.timerService != nil && a.noteService != nil && a.noteService.HasActiveCases() {
+		a.timerService.Stop()
+		a.timerService.Start()
+	}
+	return nil
+}
+
+// GetDocReminderSettings returns the current documentation reminder settings.
+func (a *App) GetDocReminderSettings() DocReminderSettings {
+	return DocReminderSettings{
+		Enabled:         a.cfg.DocReminderEnabled,
+		IntervalMinutes: a.cfg.DocReminderIntervalMinutes,
+	}
 }
 

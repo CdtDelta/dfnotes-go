@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"dfnotes-go/internal/models"
+	"dfnotes-go/internal/timer"
 
 	"github.com/google/uuid"
 )
@@ -57,17 +58,20 @@ type EvidenceService struct {
 	evidenceRepo models.EvidenceRepository
 	auditRepo    models.AuditLogRepository
 	session      *Session
+	timerService timer.Service
 }
 
 func NewEvidenceService(
 	evidenceRepo models.EvidenceRepository,
 	auditRepo models.AuditLogRepository,
 	session *Session,
+	timerService timer.Service,
 ) *EvidenceService {
 	return &EvidenceService{
 		evidenceRepo: evidenceRepo,
 		auditRepo:    auditRepo,
 		session:      session,
+		timerService: timerService,
 	}
 }
 
@@ -193,6 +197,8 @@ func (s *EvidenceService) UpdateEvidenceStatus(ctx context.Context, req UpdateEv
 		return nil, err
 	}
 
+	s.timerService.ResetPartial()
+
 	details, _ := json.Marshal(map[string]string{
 		"action":      "update_evidence_status",
 		"evidence_id": item.EvidenceItemID,
@@ -239,6 +245,8 @@ func (s *EvidenceService) AddCustodyEntry(ctx context.Context, req AddCustodyEnt
 	if err := s.evidenceRepo.Update(ctx, item); err != nil {
 		return nil, err
 	}
+
+	s.timerService.ResetPartial()
 
 	details, _ := json.Marshal(map[string]string{
 		"action":      "add_custody_entry",

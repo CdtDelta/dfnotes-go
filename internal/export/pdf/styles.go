@@ -20,7 +20,7 @@ const (
 	lineHeightBody = 6.0
 
 	// AppVersion is embedded in the cover page of generated PDFs.
-	AppVersion = "0.5.0"
+	AppVersion = "0.6.0"
 	appVersion = AppVersion
 )
 

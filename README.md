@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.5.0**
+**Version 0.6.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -111,6 +111,17 @@ Beyond integrity, it handles the practical side of forensic case work:
 - SHA-256 sidecar file written alongside the PDF for integrity verification
 - Export logged in the audit trail
 
+### Documentation Reminder
+- Countdown timer that alerts the examiner when too much time has passed without documenting, preventing tunnel vision during long analysis sessions
+- Configurable interval in Settings (Documentation Reminder section); default is 30 minutes
+- Full reset (restarts at the full interval) when a note block is committed or a timeline entry is added or edited
+- Partial reset (restarts at half the interval) when an evidence item status changes or a manual custody log entry is added
+- When the reminder fires, the application window comes to the foreground
+- Modal presents four actions: Document Now (navigates focus to the active note editor), Snooze 15 min, Snooze 30 min, Pause reminders
+- Pause indicator bar shown below the case tab bar while reminders are paused, with a Resume button
+- Inline warning in Settings when the configured interval is below 30 minutes
+- Timer runs only while a case is unlocked; does not run on the dashboard, login screen, or setup wizard, and is not interrupted by opening Settings
+
 ### Database Location
 - Database location is configurable at first launch and changeable at any time in Settings
 - Move: closes connection, copies file, verifies integrity via SHA-256, deletes original, reopens at new path
@@ -183,6 +194,22 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.6.0 (2026-05-23)
+
+**Documentation Reminder Timer**
+- Countdown timer that alerts the examiner when too much time has passed without documenting
+- Full reset on committed note block or timeline entry add/edit; partial reset (half interval) on evidence status change or manual custody log entry
+- When the reminder fires, the application window comes to the foreground
+- Actions: Document Now (navigates focus to the active note editor), Snooze 15 min, Snooze 30 min, Pause reminders
+- Pause indicator bar with Resume button shown below the tab bar while reminders are paused
+- Configurable interval in Settings with inline warning below 30 minutes
+- Timer runs only during an unlocked case session; not interrupted by opening Settings
+
+**Settings Modal**
+- Settings now opens as an overlay panel instead of navigating to a separate route
+- An active case stays unlocked and the documentation reminder timer keeps running during a Settings visit
+- Close with the X button, Escape key, or clicking the backdrop (backdrop click is blocked when unsaved changes are present)
 
 ### v0.5.0 (2026-05-21)
 
