@@ -52,10 +52,12 @@ type EvidenceResponse struct {
 	CollectedAt    string                 `json:"collected_at"`
 	CreatedAt      string                 `json:"created_at"`
 	Tags           []TagResponse          `json:"tags"`
+	ItemNumber     string                 `json:"item_number"`
 }
 
 type EvidenceService struct {
 	evidenceRepo models.EvidenceRepository
+	caseRepo     models.CaseRepository
 	auditRepo    models.AuditLogRepository
 	session      *Session
 	timerService timer.Service
@@ -63,12 +65,14 @@ type EvidenceService struct {
 
 func NewEvidenceService(
 	evidenceRepo models.EvidenceRepository,
+	caseRepo models.CaseRepository,
 	auditRepo models.AuditLogRepository,
 	session *Session,
 	timerService timer.Service,
 ) *EvidenceService {
 	return &EvidenceService{
 		evidenceRepo: evidenceRepo,
+		caseRepo:     caseRepo,
 		auditRepo:    auditRepo,
 		session:      session,
 		timerService: timerService,
@@ -86,6 +90,18 @@ func (s *EvidenceService) AddEvidence(ctx context.Context, req AddEvidenceReques
 	user := s.session.User()
 	now := time.Now().UTC()
 	itemID := uuid.New().String()
+
+	// Generate the item number using the case's numbering configuration.
+	// Count all existing items (including withdrawn) to get the next sequence.
+	c, err := s.caseRepo.GetByID(ctx, req.CaseID)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := s.evidenceRepo.ListByCase(ctx, req.CaseID)
+	if err != nil {
+		return nil, err
+	}
+	itemNumber := fmt.Sprintf("%s%0*d", c.EvidencePrefix, c.EvidenceSeqDigits, len(existing)+1)
 
 	item := &models.EvidenceItem{
 		EvidenceItemID: itemID,
@@ -107,6 +123,7 @@ func (s *EvidenceService) AddEvidence(ctx context.Context, req AddEvidenceReques
 		CollectedAt: now,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		ItemNumber:  itemNumber,
 	}
 
 	if err := s.evidenceRepo.Create(ctx, item); err != nil {
@@ -301,5 +318,6 @@ func (s *EvidenceService) evidenceToResponse(item *models.EvidenceItem) *Evidenc
 		CollectedAt:    item.CollectedAt.UTC().Format(time.RFC3339),
 		CreatedAt:      item.CreatedAt.UTC().Format(time.RFC3339),
 		Tags:           tags,
+		ItemNumber:     item.ItemNumber,
 	}
 }

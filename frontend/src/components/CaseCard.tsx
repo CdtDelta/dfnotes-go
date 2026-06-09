@@ -17,7 +17,14 @@ export default function CaseCard({ caseData }: CaseCardProps) {
         >
             <div className="flex items-start justify-between mb-2">
                 <span className="text-sm text-gray-400 font-mono">{caseData.case_number}</span>
-                <ClassificationBadge level={caseData.classification} />
+                <div className="flex items-center gap-1.5">
+                    {caseData.attorney_client_privilege && (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-amber-800 text-amber-200">
+                            Privileged
+                        </span>
+                    )}
+                    <ClassificationBadge level={caseData.classification} />
+                </div>
             </div>
             <h3 className="text-lg font-semibold text-gray-100 mb-1">{caseData.title}</h3>
             {caseData.description && (

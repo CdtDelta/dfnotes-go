@@ -1,6 +1,7 @@
 const classificationColors: Record<string, string> = {
     'UNCLASSIFIED': 'bg-green-700 text-green-100',
     'CONFIDENTIAL': 'bg-blue-700 text-blue-100',
+    'RESTRICTED': 'bg-yellow-700 text-yellow-100',
     'SECRET': 'bg-red-700 text-red-100',
     'TOP SECRET': 'bg-orange-700 text-orange-100',
 };

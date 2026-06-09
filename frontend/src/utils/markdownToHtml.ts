@@ -12,29 +12,27 @@ import { services } from '../../wailsjs/go/models';
 const GFM_EXTENSIONS = [gfmStrikethrough(), gfmTable, gfmTaskListItem];
 const GFM_HTML_EXTENSIONS = [gfmStrikethroughHtml, gfmTableHtml, gfmTaskListItemHtml, gfmTagfilterHtml];
 
+const escHtml = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 function preprocessMarkdown(
     content: string,
     evidenceItems: services.EvidenceResponse[],
 ): string {
     const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
 
-    // [[E001]] / [[name]] -- convert to raw HTML span BEFORE micromark so the
+    // [[item_number]] / [[name]] -- convert to raw HTML span BEFORE micromark so the
     // evidence:// URI is not stripped by micromark's protocol sanitizer.
     let result = content.replace(/\[\[([^\]]+)\]\]/g, (_match, ref: string) => {
         const trimmed = ref.trim();
-        const labelMatch = trimmed.match(/^E(\d+)$/i);
-        if (labelMatch) {
-            const idx = parseInt(labelMatch[1], 10) - 1;
-            if (idx >= 0 && idx < sorted.length) {
-                const id = sorted[idx].evidence_item_id;
-                return `<span class="text-blue-400 hover:text-blue-300 underline cursor-pointer" data-evidence-id="${id}" role="button">${trimmed}</span>`;
-            }
+        const byNumber = sorted.find((e) => e.item_number.toLowerCase() === trimmed.toLowerCase());
+        if (byNumber) {
+            return `<span class="text-blue-400 hover:text-blue-300 underline cursor-pointer" data-evidence-id="${escHtml(byNumber.evidence_item_id)}" role="button">${escHtml(byNumber.item_number)}: ${escHtml(byNumber.name)}</span>`;
         }
         const byName = sorted.find((e) => e.name.toLowerCase() === trimmed.toLowerCase());
         if (byName) {
-            const byNameIdx = sorted.findIndex((e) => e.evidence_item_id === byName.evidence_item_id);
-            const label = `E${String(byNameIdx + 1).padStart(3, '0')}`;
-            return `<span class="text-blue-400 hover:text-blue-300 underline cursor-pointer" data-evidence-id="${byName.evidence_item_id}" role="button">${label}: ${byName.name}</span>`;
+            return `<span class="text-blue-400 hover:text-blue-300 underline cursor-pointer" data-evidence-id="${escHtml(byName.evidence_item_id)}" role="button">${escHtml(byName.item_number)}: ${escHtml(byName.name)}</span>`;
         }
         return `[[${ref}]]`;
     });

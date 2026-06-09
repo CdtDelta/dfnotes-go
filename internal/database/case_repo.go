@@ -16,19 +16,21 @@ func NewCaseRepo(db *DB) *CaseRepo {
 
 func (r *CaseRepo) Create(ctx context.Context, c *models.Case) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO cases (case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, salt, encrypted_key, created_by, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO cases (case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, evidence_prefix, evidence_seq_digits, salt, encrypted_key, created_by, created_at, updated_at, attorney_client_privilege)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.CaseID, c.CaseNumber, c.Title, c.Description, string(c.Classification),
 		c.TicketNumber, c.ExaminerName, c.Organization,
+		c.EvidencePrefix, c.EvidenceSeqDigits,
 		nullBytes(c.Salt), nullBytes(c.EncryptedKey),
 		c.CreatedBy, FormatTime(c.CreatedAt), FormatTime(c.UpdatedAt),
+		c.AttorneyClientPrivilege,
 	)
 	return wrapError(err)
 }
 
 func (r *CaseRepo) GetByID(ctx context.Context, caseID string) (*models.Case, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, salt, encrypted_key, created_by, created_at, updated_at
+		`SELECT case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, evidence_prefix, evidence_seq_digits, salt, encrypted_key, created_by, created_at, updated_at, attorney_client_privilege
 		 FROM cases WHERE case_id = ?`, caseID)
 
 	var c models.Case
@@ -36,8 +38,9 @@ func (r *CaseRepo) GetByID(ctx context.Context, caseID string) (*models.Case, er
 
 	err := row.Scan(&c.CaseID, &c.CaseNumber, &c.Title, &c.Description, &classification,
 		&c.TicketNumber, &c.ExaminerName, &c.Organization,
+		&c.EvidencePrefix, &c.EvidenceSeqDigits,
 		&c.Salt, &c.EncryptedKey,
-		&c.CreatedBy, &createdAt, &updatedAt)
+		&c.CreatedBy, &createdAt, &updatedAt, &c.AttorneyClientPrivilege)
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -50,7 +53,7 @@ func (r *CaseRepo) GetByID(ctx context.Context, caseID string) (*models.Case, er
 
 func (r *CaseRepo) List(ctx context.Context) ([]models.Case, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, salt, encrypted_key, created_by, created_at, updated_at
+		`SELECT case_id, case_number, title, description, classification, ticket_number, examiner_name, organization, evidence_prefix, evidence_seq_digits, salt, encrypted_key, created_by, created_at, updated_at, attorney_client_privilege
 		 FROM cases ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, wrapError(err)
@@ -63,8 +66,9 @@ func (r *CaseRepo) List(ctx context.Context) ([]models.Case, error) {
 		var classification, createdAt, updatedAt string
 		if err := rows.Scan(&c.CaseID, &c.CaseNumber, &c.Title, &c.Description, &classification,
 			&c.TicketNumber, &c.ExaminerName, &c.Organization,
+			&c.EvidencePrefix, &c.EvidenceSeqDigits,
 			&c.Salt, &c.EncryptedKey,
-			&c.CreatedBy, &createdAt, &updatedAt); err != nil {
+			&c.CreatedBy, &createdAt, &updatedAt, &c.AttorneyClientPrivilege); err != nil {
 			return nil, wrapError(err)
 		}
 		c.Classification = models.ClassificationLevel(classification)
@@ -82,6 +86,17 @@ func (r *CaseRepo) Update(ctx context.Context, c *models.Case) error {
 		c.TicketNumber, c.ExaminerName, c.Organization,
 		nullBytes(c.Salt), nullBytes(c.EncryptedKey),
 		FormatTime(c.UpdatedAt), c.CaseID,
+	)
+	if err != nil {
+		return wrapError(err)
+	}
+	return checkRowsAffected(result)
+}
+
+func (r *CaseRepo) UpdateAttorneyClientPrivilege(ctx context.Context, caseID string, value bool, updatedAt string) error {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE cases SET attorney_client_privilege=?, updated_at=? WHERE case_id=?`,
+		value, updatedAt, caseID,
 	)
 	if err != nil {
 		return wrapError(err)

@@ -12,9 +12,11 @@ interface EvidenceNotesTabProps {
     evidenceItems?: services.EvidenceResponse[];
     onEvidenceClick?: (evidenceItemId: string) => void;
     onNavigateToTask?: (taskId: string) => void;
+    iocVersion: number;
+    onIocStatusChange: () => void;
 }
 
-export default function EvidenceNotesTab({ caseId, evidenceItemId, evidenceItems, onEvidenceClick, onNavigateToTask }: EvidenceNotesTabProps) {
+export default function EvidenceNotesTab({ caseId, evidenceItemId, evidenceItems, onEvidenceClick, onNavigateToTask, iocVersion, onIocStatusChange }: EvidenceNotesTabProps) {
     const [content, setContent] = useState('');
     const [notes, setNotes] = useState<services.NoteBlockResponse[]>([]);
     const [loading, setLoading] = useState(true);
@@ -112,6 +114,8 @@ export default function EvidenceNotesTab({ caseId, evidenceItemId, evidenceItems
                                 onEvidenceClick={onEvidenceClick}
                                 onTagsChanged={fetchNotes}
                                 onNavigateToTask={onNavigateToTask}
+                                iocVersion={iocVersion}
+                                onIocStatusChange={onIocStatusChange}
                             />
                         ))}
                     </div>

@@ -48,10 +48,10 @@ export default function NoteEditor({ caseId, content, onChange, evidenceItems, o
         acTriggerPos.current = cursorPos - match[1].length - 2; // position of [[
         const query = match[1].toLowerCase();
         const items: AutocompleteItem[] = sortedEvidence
-            .map((e, i) => {
-                const label = `E${String(i + 1).padStart(3, '0')}`;
-                return { label: `${label}: ${e.name}`, insert: `${label}` };
-            })
+            .map((e) => ({
+                label: `${e.item_number}: ${e.name}`,
+                insert: e.item_number,
+            }))
             .filter((item) => item.label.toLowerCase().includes(query));
 
         if (items.length > 0) {

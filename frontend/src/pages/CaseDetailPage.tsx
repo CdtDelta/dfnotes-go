@@ -34,6 +34,8 @@ export default function CaseDetailPage() {
     const [reminderVisible, setReminderVisible] = useState(false);
     const [minutesElapsed, setMinutesElapsed] = useState(0);
     const [reminderPaused, setReminderPaused] = useState(false);
+    const [iocVersion, setIocVersion] = useState(0);
+    const incrementIocVersion = useCallback(() => setIocVersion(v => v + 1), []);
 
     // Always-current ref so the unmount cleanup can read the latest pageState
     const pageStateRef = useRef<PageState>('loading');
@@ -178,9 +180,11 @@ export default function CaseDetailPage() {
     const sortedEvidenceItems = [...evidenceItems].sort((a, b) =>
         a.created_at.localeCompare(b.created_at)
     );
+    const evPrefix = caseData?.evidence_prefix ?? 'E';
+    const evDigits = caseData?.evidence_seq_digits ?? 3;
     const evidenceTabs = sortedEvidenceItems.map((item, index) => ({
         id: `evidence-notes-${item.evidence_item_id}`,
-        label: `E${String(index + 1).padStart(3, '0')}`,
+        label: `${evPrefix}${String(index + 1).padStart(evDigits, '0')}`,
     }));
 
     const tabs: { id: string; label: string }[] = [
@@ -296,7 +300,17 @@ export default function CaseDetailPage() {
                         )}
 
                         {/* Tab Content */}
-                        {activeTab === 'overview' && <CaseOverviewTab caseData={caseData} />}
+                        {activeTab === 'overview' && (
+                            <CaseOverviewTab
+                                caseData={caseData}
+                                onClassificationChanged={(level) =>
+                                    setCaseData((prev) => prev ? { ...prev, classification: level } : prev)
+                                }
+                                onPrivilegeChanged={(value) =>
+                                    setCaseData((prev) => prev ? { ...prev, attorney_client_privilege: value } : prev)
+                                }
+                            />
+                        )}
                         {activeTab === 'evidence' && <EvidenceTab caseId={caseData.case_id} onEvidenceChanged={fetchEvidenceItems} />}
                         {activeTab.startsWith('evidence-notes-') && (
                             <EvidenceNotesTab
@@ -305,6 +319,8 @@ export default function CaseDetailPage() {
                                 evidenceItems={evidenceItems}
                                 onEvidenceClick={handleEvidenceClick}
                                 onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
+                                iocVersion={iocVersion}
+                                onIocStatusChange={incrementIocVersion}
                             />
                         )}
                         {activeTab === 'iocs' && (
@@ -312,6 +328,9 @@ export default function CaseDetailPage() {
                                 caseId={caseData.case_id}
                                 evidenceItems={evidenceItems}
                                 onNavigate={handleNavigate}
+                                onIocStatusChange={incrementIocVersion}
+                                evidencePrefix={caseData.evidence_prefix ?? 'E'}
+                                evidenceSeqDigits={caseData.evidence_seq_digits ?? 3}
                             />
                         )}
                         {activeTab === 'timeline' && (
@@ -334,6 +353,8 @@ export default function CaseDetailPage() {
                                 evidenceItems={evidenceItems}
                                 onEvidenceClick={handleEvidenceClick}
                                 onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
+                                iocVersion={iocVersion}
+                                onIocStatusChange={incrementIocVersion}
                             />
                         )}
                     </>

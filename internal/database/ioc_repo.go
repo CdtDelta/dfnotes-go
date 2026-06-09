@@ -89,6 +89,17 @@ func (r *IOCRepo) UpdateStatus(ctx context.Context, iocID string, status ioc.IOC
 	return checkRowsAffected(result)
 }
 
+func (r *IOCRepo) UpdateType(ctx context.Context, iocID string, iocType ioc.IOCType) error {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE ioc_entries SET type = ?, status = 'detected', confirmed_at = NULL WHERE ioc_id = ?`,
+		string(iocType), iocID,
+	)
+	if err != nil {
+		return wrapError(err)
+	}
+	return checkRowsAffected(result)
+}
+
 func (r *IOCRepo) GetExistingByBlock(ctx context.Context, blockID string) (map[string]struct{}, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT type, value FROM ioc_entries WHERE block_id = ?`, blockID)

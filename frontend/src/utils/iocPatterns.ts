@@ -66,6 +66,12 @@ export const IOC_PATTERNS: IOCPattern[] = [
         label: 'File Path',
     },
     {
+        type: 'file',
+        // No auto-detection; this type is only assigned via manual correction.
+        regex: /(?!)/g,
+        label: 'File',
+    },
+    {
         type: 'domain',
         // Requires at least one dot and a 2-6 char TLD. High FP rate -- backend filters.
         // Negative lookahead excludes known non-TLD file extensions.

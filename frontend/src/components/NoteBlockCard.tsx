@@ -15,6 +15,8 @@ interface NoteBlockCardProps {
     onEvidenceClick?: (evidenceItemId: string) => void;
     onTagsChanged?: () => void;
     onNavigateToTask?: (taskId: string) => void;
+    iocVersion: number;
+    onIocStatusChange: () => void;
 }
 
 interface ContextMenuState {
@@ -26,7 +28,7 @@ interface ContextMenuState {
     iocStatus: IOCStatus;
 }
 
-export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged, onNavigateToTask }: NoteBlockCardProps) {
+export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged, onNavigateToTask, iocVersion, onIocStatusChange }: NoteBlockCardProps) {
     const createdDate = new Date(block.created_at).toLocaleString();
     const shortHash = block.content_hash.substring(0, 12);
     const shortPrev = block.prev_hash === 'genesis'
@@ -57,7 +59,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
 
     useEffect(() => {
         fetchIOCs();
-    }, [fetchIOCs]);
+    }, [iocVersion, fetchIOCs]);
 
     const fetchLinkedTasks = useCallback(() => {
         GetLinkedTasks(block.block_id)
@@ -136,6 +138,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         // re-renders the spans with the new status class immediately.
         setIocs((prev) => prev.map((ioc) => ioc.ioc_id === iocId ? { ...ioc, status: newStatus } : ioc));
         fetchIOCs();
+        onIocStatusChange();
     };
 
     const handleTag = async (tagId: string) => {

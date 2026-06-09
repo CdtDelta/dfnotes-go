@@ -44,4 +44,5 @@ type EvidenceItem struct {
 	CreatedAt      time.Time        `json:"created_at"`
 	UpdatedAt      time.Time        `json:"updated_at"`
 	Tags           []Tag            `json:"tags,omitempty"`
+	ItemNumber     string           `json:"item_number"`
 }

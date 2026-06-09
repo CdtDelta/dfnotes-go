@@ -26,7 +26,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.6.0"
+const AppVersion = "0.7.0"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -112,7 +112,7 @@ func (a *App) openDatabase(path string) error {
 	a.identityService = services.NewIdentityService(userRepo, auditRepo, a.session)
 	a.caseService = services.NewCaseService(caseRepo, auditRepo, a.session)
 	a.noteService = services.NewNoteService(noteBlockRepo, caseRepo, auditRepo, attachmentRepo, a.session, a.timerService)
-	a.evidenceService = services.NewEvidenceService(evidenceRepo, auditRepo, a.session, a.timerService)
+	a.evidenceService = services.NewEvidenceService(evidenceRepo, caseRepo, auditRepo, a.session, a.timerService)
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.iocService = ioc.NewIOCService(iocRepo)
 	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService)
@@ -198,6 +198,16 @@ func (a *App) ListCases() ([]services.CaseResponse, error) {
 // GetCase returns a single case by ID.
 func (a *App) GetCase(id string) (*services.CaseResponse, error) {
 	return a.caseService.GetCase(a.ctx, id)
+}
+
+// UpdateCaseClassification changes the classification level of a case.
+func (a *App) UpdateCaseClassification(caseID string, newLevel string) error {
+	return a.caseService.UpdateCaseClassification(a.ctx, caseID, newLevel)
+}
+
+// ToggleAttorneyClientPrivilege flips the attorney-client privilege flag on a case.
+func (a *App) ToggleAttorneyClientPrivilege(caseID string) error {
+	return a.caseService.ToggleAttorneyClientPrivilege(a.ctx, caseID)
 }
 
 // UnlockCase unlocks a case with the case-specific password.
@@ -346,6 +356,11 @@ func (a *App) GetCaseIOCs(caseID string, includeAll bool) ([]ioc.IOCEntry, error
 // UpdateIOCStatus changes the status of an IOC (detected, confirmed, false_positive).
 func (a *App) UpdateIOCStatus(iocID string, status string) error {
 	return a.iocService.UpdateIOCStatus(a.ctx, iocID, status)
+}
+
+// UpdateIOCType changes the type of an IOC and resets its status to detected.
+func (a *App) UpdateIOCType(iocID string, iocType string) error {
+	return a.iocService.UpdateIOCType(a.ctx, iocID, iocType)
 }
 
 // GetBlockIOCs returns all IOC entries for a specific committed block.

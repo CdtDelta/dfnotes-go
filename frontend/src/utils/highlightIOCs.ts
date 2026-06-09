@@ -62,12 +62,16 @@ function highlightTextSegment(
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
-        result +=
-            `<span class="ioc-highlight ioc-highlight--${ioc.status}"` +
-            ` data-ioc-id="${ioc.ioc_id}"` +
-            ` data-ioc-type="${ioc.type}"` +
-            ` data-ioc-value="${escaped}"` +
-            ` data-ioc-status="${ioc.status}">${escaped}</span>`;
+        if (ioc.status === 'false_positive') {
+            result += escaped;
+        } else {
+            result +=
+                `<span class="ioc-highlight ioc-highlight--${ioc.status}"` +
+                ` data-ioc-id="${ioc.ioc_id}"` +
+                ` data-ioc-type="${ioc.type}"` +
+                ` data-ioc-value="${escaped}"` +
+                ` data-ioc-status="${ioc.status}">${escaped}</span>`;
+        }
 
         pos = bestIdx + bestLen;
     }

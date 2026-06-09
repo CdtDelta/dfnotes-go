@@ -23,8 +23,23 @@ export default function CaseCreatePage() {
     const [classification, setClassification] = useState('UNCLASSIFIED');
     const [ticketNumber, setTicketNumber] = useState('');
     const [description, setDescription] = useState('');
+    const [evidencePrefix, setEvidencePrefix] = useState('E');
+    const [evidenceSeqDigits, setEvidenceSeqDigits] = useState(3);
+    const [prefixError, setPrefixError] = useState('');
     const [casePassword, setCasePassword] = useState('');
     const [confirmCasePassword, setConfirmCasePassword] = useState('');
+    const [attorneyClientPrivilege, setAttorneyClientPrivilege] = useState(false);
+
+    const PREFIX_REGEX = /^[A-Za-z0-9_-]+$/;
+
+    const handlePrefixChange = (value: string) => {
+        setEvidencePrefix(value);
+        if (value && !PREFIX_REGEX.test(value)) {
+            setPrefixError('Alphanumeric, hyphens, and underscores only.');
+        } else {
+            setPrefixError('');
+        }
+    };
 
     useEffect(() => {
         GetUserInfo()
@@ -61,6 +76,10 @@ export default function CaseCreatePage() {
             setError('Passwords do not match');
             return;
         }
+        if (!evidencePrefix || !PREFIX_REGEX.test(evidencePrefix)) {
+            setError('Evidence prefix must contain only letters, digits, hyphens, and underscores');
+            return;
+        }
 
         setLoading(true);
         try {
@@ -71,6 +90,9 @@ export default function CaseCreatePage() {
                 ticket_number: ticketNumber.trim(),
                 description: description.trim(),
                 case_password: casePassword,
+                evidence_prefix: evidencePrefix,
+                evidence_seq_digits: evidenceSeqDigits,
+                attorney_client_privilege: attorneyClientPrivilege,
             });
             navigate('/');
         } catch (err: unknown) {
@@ -177,6 +199,44 @@ export default function CaseCreatePage() {
                     </div>
 
                     <div className="border-t border-gray-700 pt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Evidence prefix</label>
+                                <input
+                                    type="text"
+                                    value={evidencePrefix}
+                                    onChange={(e) => handlePrefixChange(e.target.value)}
+                                    className={`w-full bg-gray-800 border rounded px-3 py-2 text-gray-100 focus:outline-none font-mono ${prefixError ? 'border-red-500 focus:border-red-500' : 'border-gray-600 focus:border-blue-500'}`}
+                                    placeholder="E"
+                                />
+                                {prefixError
+                                    ? <p className="text-xs text-red-400 mt-1">{prefixError}</p>
+                                    : <p className="text-xs text-gray-500 mt-1">Added before each evidence number. Alphanumeric, hyphens, and underscores only.</p>
+                                }
+                            </div>
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Sequence digits</label>
+                                <input
+                                    type="number"
+                                    value={evidenceSeqDigits}
+                                    onChange={(e) => setEvidenceSeqDigits(Math.min(6, Math.max(1, parseInt(e.target.value) || 1)))}
+                                    min={1}
+                                    max={6}
+                                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Zero-padded length of the sequence number (e.g. 3 produces 001, 002...).</p>
+                            </div>
+                        </div>
+                        {evidencePrefix && !prefixError && (
+                            <p className="text-xs text-gray-400 mb-4 font-mono">
+                                Evidence items will be numbered:{' '}
+                                {evidencePrefix}{String(1).padStart(evidenceSeqDigits, '0')},{' '}
+                                {evidencePrefix}{String(2).padStart(evidenceSeqDigits, '0')}...
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="border-t border-gray-700 pt-4">
                         <p className="text-sm text-gray-400 mb-3">
                             The case password is used for per-case encryption key derivation.
                         </p>
@@ -201,6 +261,21 @@ export default function CaseCreatePage() {
                                 />
                             </div>
                         </div>
+                    </div>
+
+                    <div className="border-t border-gray-700 pt-4">
+                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={attorneyClientPrivilege}
+                                onChange={(e) => setAttorneyClientPrivilege(e.target.checked)}
+                                className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500 focus:ring-offset-gray-900 cursor-pointer"
+                            />
+                            <div>
+                                <span className="text-sm text-gray-200">Attorney-Client Privilege</span>
+                                <p className="text-xs text-gray-500 mt-0.5">Mark this case as subject to attorney-client privilege.</p>
+                            </div>
+                        </label>
                     </div>
 
                     <div className="flex gap-2 pt-2">

@@ -96,13 +96,6 @@
   border-bottom: 1px solid var(--ioc-confirmed-text, rgba(239,68,68,0.5));
 }
 
-.ioc-highlight--false_positive {
-  background-color: var(--ioc-fp-bg, rgba(148,163,184,0.15));
-  color: var(--ioc-fp-text, #888);
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-
 .ioc-highlight:hover {
   opacity: 0.85;
 }

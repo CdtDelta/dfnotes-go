@@ -20,6 +20,8 @@ export function defang(value: string, type: IOCType): string {
             const domain = value.slice(at + 1).replace(/\./g, '[.]');
             return `${value.slice(0, at)}[@]${domain}`;
         }
+        case 'file':
+            return value.replace(/\.([^.]+)$/, '[.]$1');
         default:
             return value;
     }

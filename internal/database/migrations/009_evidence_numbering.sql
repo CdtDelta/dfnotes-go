@@ -1,0 +1,2 @@
+ALTER TABLE cases ADD COLUMN evidence_prefix TEXT NOT NULL DEFAULT 'E';
+ALTER TABLE cases ADD COLUMN evidence_seq_digits INTEGER NOT NULL DEFAULT 3;

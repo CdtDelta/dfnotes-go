@@ -89,6 +89,17 @@ func (s *IOCService) UpdateIOCStatus(ctx context.Context, iocID, status string) 
 	return s.repo.UpdateStatus(ctx, iocID, IOCStatus(status), confirmedAt)
 }
 
+// UpdateIOCType changes the type of an IOC and resets its status to detected.
+func (s *IOCService) UpdateIOCType(ctx context.Context, iocID, iocType string) error {
+	switch IOCType(iocType) {
+	case IOCTypeIPv4, IOCTypeIPv6, IOCTypeDomain, IOCTypeURL, IOCTypeEmail,
+		IOCTypeMD5, IOCTypeSHA1, IOCTypeSHA256, IOCTypeFilePath, IOCTypeFile, IOCTypeRegistryKey, IOCTypeCVE:
+	default:
+		return errors.New("invalid type")
+	}
+	return s.repo.UpdateType(ctx, iocID, IOCType(iocType))
+}
+
 // GetBlockIOCs returns all IOC entries for a specific committed block.
 func (s *IOCService) GetBlockIOCs(ctx context.Context, blockID string) ([]IOCEntry, error) {
 	return s.repo.GetByBlock(ctx, blockID)

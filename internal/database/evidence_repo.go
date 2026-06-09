@@ -22,19 +22,20 @@ func (r *EvidenceRepo) Create(ctx context.Context, item *models.EvidenceItem) er
 	}
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO evidence_items (evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO evidence_items (evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.EvidenceItemID, item.CaseID, item.Name, item.Description,
 		string(item.EvidenceType), string(item.Status), item.ContentHash,
 		string(custodyJSON), item.CollectedBy,
 		FormatTime(item.CollectedAt), FormatTime(item.CreatedAt), FormatTime(item.UpdatedAt),
+		item.ItemNumber,
 	)
 	return wrapError(err)
 }
 
 func (r *EvidenceRepo) GetByID(ctx context.Context, evidenceItemID string) (*models.EvidenceItem, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at
+		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number
 		 FROM evidence_items WHERE evidence_item_id = ?`, evidenceItemID)
 
 	item, err := r.scanItem(row)
@@ -52,7 +53,7 @@ func (r *EvidenceRepo) GetByID(ctx context.Context, evidenceItemID string) (*mod
 
 func (r *EvidenceRepo) ListByCase(ctx context.Context, caseID string) ([]models.EvidenceItem, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at
+		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number
 		 FROM evidence_items WHERE case_id = ? ORDER BY created_at DESC`, caseID)
 	if err != nil {
 		return nil, wrapError(err)
@@ -138,7 +139,7 @@ func (r *EvidenceRepo) scanItem(s scanner) (*models.EvidenceItem, error) {
 
 	err := s.Scan(&item.EvidenceItemID, &item.CaseID, &item.Name, &item.Description,
 		&evType, &status, &item.ContentHash, &custodyJSON,
-		&item.CollectedBy, &collectedAt, &createdAt, &updatedAt)
+		&item.CollectedBy, &collectedAt, &createdAt, &updatedAt, &item.ItemNumber)
 	if err != nil {
 		return nil, wrapError(err)
 	}

@@ -47,6 +47,31 @@ const helpSections: HelpSection[] = [
         ),
     },
     {
+        title: 'Case Overview',
+        content: (
+            <div className="help-text">
+                <p>
+                    The Case Overview tab shows metadata for the open case and provides inline controls
+                    for fields that can change during an investigation.
+                </p>
+                <h3>Classification Level</h3>
+                <p>
+                    The classification level can be changed at any time via the inline <strong>Edit</strong> button
+                    in the Classification field. Select a new level and click <strong>Save</strong>. The change
+                    takes effect immediately and is recorded in the audit log.
+                </p>
+                <h3>Attorney-Client Privilege</h3>
+                <p>
+                    The privilege marker can be toggled at any time from Case Overview. When enabled, an amber
+                    <strong> Attorney-Client Privilege</strong> badge appears in Case Overview and a smaller
+                    <strong> Privileged</strong> badge appears on the case card on the dashboard. Click
+                    <strong> Remove</strong> next to the badge to clear the flag, or click
+                    <strong> + Add privilege marker</strong> to enable it. All changes are recorded in the audit log.
+                </p>
+            </div>
+        ),
+    },
+    {
         title: 'Note Taking',
         content: (
             <div className="help-text">
@@ -82,6 +107,13 @@ const helpSections: HelpSection[] = [
             <div className="help-text">
                 <p>
                     Open the <strong>Evidence</strong> tab to register and manage evidence items for the case.
+                </p>
+                <h3>Evidence Numbering</h3>
+                <p>
+                    Evidence items are numbered using a configurable prefix and digit count set at case creation.
+                    The default format is <code>E001</code>, <code>E002</code>, and so on. Custom formats such as
+                    <code> DF-2025-001</code> are supported by setting a custom prefix and digit count when creating
+                    the case. The prefix accepts alphanumeric characters, hyphens, and underscores.
                 </p>
                 <h3>Registering Evidence</h3>
                 <p>
@@ -141,7 +173,9 @@ const helpSections: HelpSection[] = [
                 <ul>
                     <li><strong>Yellow</strong> -- detected but not yet reviewed</li>
                     <li><strong>Red</strong> -- confirmed IOC of interest</li>
-                    <li><strong>Gray strikethrough</strong> -- false positive, dismissed</li>
+                    <li>False positives no longer show strikethrough in committed block view. They render as plain
+                        text, indistinguishable from non-IOC content. To review or restore false positive IOCs,
+                        open the IOC Summary tab and enable <strong>Show False Positives</strong>.</li>
                 </ul>
                 <h3>Reviewing IOCs</h3>
                 <p>
@@ -160,6 +194,18 @@ const helpSections: HelpSection[] = [
                 <p>
                     Unix file paths are detected and appear in the IOC Summary tab but are not highlighted
                     inline in committed block text, as they produce too many false positives in typical notes.
+                </p>
+                <h3>Editing IOC Type</h3>
+                <p>
+                    The IOC type assigned by auto-detection can be corrected from the IOC Summary tab via an
+                    inline dropdown. This is useful when auto-detection misclassifies a value -- for example,
+                    tagging a hash as the wrong algorithm. Changing the type resets the IOC status to detected.
+                </p>
+                <p>
+                    <strong>file</strong> is a supported IOC type for standalone filenames (e.g.{' '}
+                    <code>NTUSER.DAT</code>). File IOCs are defanged with <code>[.]</code> before the extension.
+                    This type is not auto-detected; it is only reachable by manually correcting the type of an
+                    existing IOC in the Summary tab.
                 </p>
             </div>
         ),
@@ -450,9 +496,12 @@ const helpSections: HelpSection[] = [
             <div className="help-text">
                 <h3>Evidence Linking</h3>
                 <p>
-                    Type <code>[[E001]]</code> in any note to create a clickable link to that evidence
-                    item's tab. An autocomplete dropdown appears as you type <code>[[</code>, listing
-                    registered evidence items.
+                    Type <code>[[</code> in any note to open the autocomplete dropdown, which lists all
+                    registered evidence items showing their actual item numbers (e.g. <code>E001</code> or
+                    <code>DF-2025-001</code> depending on the case's configured prefix). Select an item
+                    or type the item number directly, for example <code>[[E001]]</code>. The rendered link
+                    displays as <code>E001: Item Name</code> and is clickable in the committed block view.
+                    Linking by item name is also supported as a fallback.
                 </p>
                 <h3>Paste Handling</h3>
                 <p>

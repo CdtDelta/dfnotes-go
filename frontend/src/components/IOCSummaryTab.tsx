@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { GetCaseIOCs, UpdateIOCStatus } from '../../wailsjs/go/main/App';
+import { GetCaseIOCs, UpdateIOCStatus, UpdateIOCType } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
 import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
 import { IOC_PATTERNS } from '../utils/iocPatterns';
@@ -9,6 +9,9 @@ interface IOCSummaryTabProps {
     caseId: string;
     evidenceItems: services.EvidenceResponse[];
     onNavigate: (tab: string, blockId?: string) => void;
+    onIocStatusChange: () => void;
+    evidencePrefix: string;
+    evidenceSeqDigits: number;
 }
 
 type SortKey = 'type' | 'value' | 'status' | 'created_at';
@@ -26,6 +29,7 @@ const TYPE_COLORS: Record<IOCType, string> = {
     sha1: 'bg-amber-900 text-amber-300',
     sha256: 'bg-amber-900 text-amber-300',
     file_path: 'bg-gray-700 text-gray-300',
+    file: 'bg-gray-700 text-gray-300',
     registry_key: 'bg-gray-700 text-gray-300',
     cve: 'bg-red-900 text-red-300',
 };
@@ -42,7 +46,7 @@ const STATUS_LABELS: Record<IOCStatus, string> = {
     false_positive: 'False Positive',
 };
 
-export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOCSummaryTabProps) {
+export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIocStatusChange, evidencePrefix, evidenceSeqDigits }: IOCSummaryTabProps) {
     const [iocs, setIocs] = useState<IOCEntry[]>([]);
     const [showFPs, setShowFPs] = useState(false);
     const [typeFilter, setTypeFilter] = useState<IOCType[]>([]);
@@ -61,10 +65,10 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOC
         const m = new Map<string, string>();
         const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
         sorted.forEach((item, idx) => {
-            m.set(item.evidence_item_id, `E${String(idx + 1).padStart(3, '0')}`);
+            m.set(item.evidence_item_id, `${evidencePrefix}${String(idx + 1).padStart(evidenceSeqDigits, '0')}`);
         });
         return m;
-    }, [evidenceItems]);
+    }, [evidenceItems, evidencePrefix, evidenceSeqDigits]);
 
     const allTypes = useMemo(() => Array.from(new Set(iocs.map((i) => i.type))).sort(), [iocs]);
 
@@ -109,12 +113,28 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOC
         }
     };
 
+    const handleTypeChange = async (iocId: string, newType: IOCType) => {
+        const prev_type = iocs.find((i) => i.ioc_id === iocId)?.type;
+        setIocs((prev) =>
+            prev.map((i) => (i.ioc_id === iocId ? { ...i, type: newType, status: 'detected' } : i))
+        );
+        try {
+            await UpdateIOCType(iocId, newType);
+            onIocStatusChange();
+        } catch {
+            setIocs((prev) =>
+                prev.map((i) => (i.ioc_id === iocId ? { ...i, type: prev_type ?? i.type } : i))
+            );
+        }
+    };
+
     const handleStatusChange = async (iocId: string, newStatus: IOCStatus) => {
         try {
             await UpdateIOCStatus(iocId, newStatus);
             setIocs((prev) =>
                 prev.map((i) => (i.ioc_id === iocId ? { ...i, status: newStatus } : i))
             );
+            onIocStatusChange();
         } catch { /* ignore */ }
     };
 
@@ -155,7 +175,7 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOC
                     <option value="">All Sources</option>
                     {[...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((item, idx) => (
                         <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                            E{String(idx + 1).padStart(3, '0')} - {item.name}
+                            {evidencePrefix}{String(idx + 1).padStart(evidenceSeqDigits, '0')} - {item.name}
                         </option>
                     ))}
                 </select>
@@ -213,16 +233,21 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate }: IOC
                             </tr>
                         )}
                         {sorted.map((ioc) => {
-                            const typeLabel = IOC_PATTERNS.find((p) => p.type === ioc.type)?.label ?? ioc.type;
                             const source = ioc.evidence_item_id
                                 ? (evidenceMap.get(ioc.evidence_item_id) ?? ioc.evidence_item_id)
                                 : 'Master Notes';
                             return (
                                 <tr key={ioc.ioc_id} className="hover:bg-gray-800">
                                     <td className="py-2 pr-4">
-                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${TYPE_COLORS[ioc.type]}`}>
-                                            {typeLabel}
-                                        </span>
+                                        <select
+                                            value={ioc.type}
+                                            onChange={(e) => handleTypeChange(ioc.ioc_id, e.target.value as IOCType)}
+                                            className={`rounded text-xs font-medium px-1.5 py-0.5 border-0 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer ${TYPE_COLORS[ioc.type]}`}
+                                        >
+                                            {IOC_PATTERNS.map((p) => (
+                                                <option key={p.type} value={p.type}>{p.label}</option>
+                                            ))}
+                                        </select>
                                     </td>
                                     <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={defang(ioc.value, ioc.type)}>
                                         {defang(ioc.value, ioc.type)}

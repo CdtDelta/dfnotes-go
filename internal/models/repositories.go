@@ -14,6 +14,7 @@ type CaseRepository interface {
 	GetByID(ctx context.Context, caseID string) (*Case, error)
 	List(ctx context.Context) ([]Case, error)
 	Update(ctx context.Context, c *Case) error
+	UpdateAttorneyClientPrivilege(ctx context.Context, caseID string, value bool, updatedAt string) error
 	Delete(ctx context.Context, caseID string) error
 }
 

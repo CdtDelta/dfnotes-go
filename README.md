@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.6.0**
+**Version 0.7.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -13,10 +13,11 @@ dfnotes-go is built around a core principle: every note you write during an inve
 Beyond integrity, it handles the practical side of forensic case work:
 
 - Per-case encrypted storage with a separate case password
-- Evidence item tracking with chain of custody logging
-- Automated IOC detection (12 types) with confirm/false positive workflow
+- Evidence item tracking with configurable numbering and chain of custody logging
+- Automated IOC detection (12 types) with confirm/false positive/type-correction workflow
 - Case timeline for key events
 - Task list with templates and note linking for investigation workflow tracking
+- Documentation reminder timer to prevent examiner tunnel vision
 - Encrypted export and automated backup
 - Built-in user guide (Help > User Guide)
 
@@ -26,6 +27,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### Case Management
 - Case creation with classification level (Unclassified through Top Secret), ticket number, examiner info
+- Classification level editable from the Case Overview tab at any time; changes are audit logged
+- Attorney-Client Privilege flag: set at case creation or toggled from Case Overview at any time; changes are audit logged; privileged cases show an amber badge in Case Overview and a Privileged badge on the dashboard case card
 - Per-case encryption key derived from a case password via Argon2id
 - Case lock/unlock -- walk away from your workstation without exposing case data
 - Multiple cases per installation, each independently encrypted
@@ -38,16 +41,20 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### Evidence Management
 - Evidence item registration with type, acquisition hash, status
+- Configurable evidence numbering per case: set a prefix (e.g. DF-2025-) and digit count at case creation; default is E001, E002...; prefix accepts alphanumeric characters, hyphens, and underscores; live preview shown during case creation
 - Status lifecycle: Collected, Analyzing, Processed, Archived, Withdrawn
 - Automatic chain of custody entries on status change, plus manual entries
 - Soft delete via Withdrawn status -- no hard deletes
 - Dynamic evidence tabs (E001, E002, etc.) each with their own note editor
-- Evidence linking in markdown using `[[E001]]` syntax with autocomplete
+- Evidence linking in markdown using `[[E001]]` syntax (or any custom format like `[[DF-2025-001]]`) with autocomplete
 
 ### IOC Detection
 - Automatic detection on block commit for 12 IOC types: IPv4, IPv6, domain, URL, email, MD5, SHA1, SHA256, Windows file path, Unix file path, registry key, CVE
-- Yellow highlight for detected IOCs, red for confirmed, gray strikethrough for false positives
+- Manual "file" type for standalone filenames (e.g. NTUSER.DAT) -- not auto-detected, assignable via type correction
+- Yellow highlight for detected IOCs, red for confirmed; false positive IOCs render as plain unstyled text in block view (no strikethrough)
 - Right-click context menu to confirm, dismiss, or restore status
+- IOC type editable from the IOC Summary tab via an inline dropdown -- useful when auto-detection misclassifies a value
+- Status or type changes in the IOC Summary tab immediately update highlights in all committed block views
 - IOC Summary tab with defanged display, filtering by type and evidence item, source navigation
 - All IOC values stored raw, defanged only on display
 
@@ -61,10 +68,19 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Per-case task tracking with five statuses: Open, In Progress, Blocked, Complete, Not Applicable
 - Completion timestamp recorded when a task is marked Complete
 - Tasks assigned to a specific evidence item or to the case overall
-- Task templates: named task sets configured in Settings, applied at any point during an investigation with evidence item assignment. Useful for standard workflows like hard drive imaging or malware triage
-- Many-to-many note block linking: link committed note blocks to tasks as documentation of the work done. A task can have multiple linked notes; a note can link to multiple tasks. Useful at report time for tracing what was done and where the details are recorded
+- Task templates: named task sets configured in Settings, applied at any point during an investigation with evidence item assignment
+- Many-to-many note block linking: link committed note blocks to tasks as documentation of the work done
 - Filtering by status and evidence item, combinable
 - Tasks included in case export
+
+### Documentation Reminder
+- Countdown timer that alerts the examiner when too much time has passed without documenting something
+- Runs only while a case is unlocked; stopped on lock
+- Full reset on committed note block or timeline entry add/edit; partial reset (half interval) on evidence status change or manual custody log entry
+- Reminder modal comes to the foreground when the timer fires; four options: Document Now, Snooze 15 min, Snooze 30 min, Pause reminders
+- Pause state shown via a persistent banner with a Resume button; clears on case lock
+- Configurable from Settings: enable/disable toggle and interval in minutes (default 30)
+- Settings visit does not interrupt the timer or lock the case
 
 ### Tagging
 - 28 predefined standard tags across analysis, status, priority, and evidence type categories
@@ -102,25 +118,14 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Export logged in the audit trail
 
 ### PDF Export
-- Full case PDF export via File > Export PDF (Cmd+P)
+- Full case PDF export via File > Export PDF
 - Classification level header and footer on every page, color-coded by level
 - Sections: cover page, table of contents, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
-- Note blocks rendered with full verification hash (SHA-256, labeled "Verification Hash:"), commitment timestamp, and block ID
-- Chain verification section includes an explanatory statement, chain-intact summary, and per-block signature and hash validation table
+- Note blocks rendered with full verification hash (SHA-256), commitment timestamp, and block ID
+- Chain verification section includes chain-intact summary and per-block signature and hash validation table
 - IOC values displayed defanged throughout
 - SHA-256 sidecar file written alongside the PDF for integrity verification
 - Export logged in the audit trail
-
-### Documentation Reminder
-- Countdown timer that alerts the examiner when too much time has passed without documenting, preventing tunnel vision during long analysis sessions
-- Configurable interval in Settings (Documentation Reminder section); default is 30 minutes
-- Full reset (restarts at the full interval) when a note block is committed or a timeline entry is added or edited
-- Partial reset (restarts at half the interval) when an evidence item status changes or a manual custody log entry is added
-- When the reminder fires, the application window comes to the foreground
-- Modal presents four actions: Document Now (navigates focus to the active note editor), Snooze 15 min, Snooze 30 min, Pause reminders
-- Pause indicator bar shown below the case tab bar while reminders are paused, with a Resume button
-- Inline warning in Settings when the configured interval is below 30 minutes
-- Timer runs only while a case is unlocked; does not run on the dashboard, login screen, or setup wizard, and is not interrupted by opening Settings
 
 ### Database Location
 - Database location is configurable at first launch and changeable at any time in Settings
@@ -137,7 +142,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### User Guide
 - Built-in help accessible from Help > User Guide
-- 11 sections covering all features: Getting Started, Note Taking, Evidence Management, IOC Detection, Timeline, Task List, Tagging, Backup, Export, Settings, Tips and Shortcuts
+- 12 sections covering all features
 - Fully theme-aware
 
 ---
@@ -190,43 +195,59 @@ build/bin/dfnotes-go
 - **Unix file paths** are detected by the backend and appear in the IOC Summary tab but are not highlighted in the committed block view (too many false positives in rendered markdown).
 - **Export requires 7z:** The export feature shells out to the system `7z` binary. If it is not installed, the export will fail with a clear error message. See Requirements above.
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
+- **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
 
 ---
 
 ## Changelog
 
+### v0.7.0 (2026-06-09)
+
+**IOC Improvements**
+- False positive IOCs no longer render with a strikethrough in committed block view -- they display as plain text. FP status is still tracked and manageable from the IOC Summary tab with Show False Positives enabled
+- Restoring an IOC from false positive to detected in the Summary tab now immediately updates the highlight in all committed block views without requiring a tab switch or restart
+- IOC type is now editable from the IOC Summary tab via an inline dropdown, useful when auto-detection misclassifies a value (e.g. a filename detected as a domain name)
+- New "file" IOC type for standalone filenames (e.g. NTUSER.DAT), defanged with [.] before the extension; only reachable via manual type correction, not auto-detected
+
+**Case Management**
+- Classification level is now editable from the Case Overview tab; changes are audit logged
+- Attorney-Client Privilege flag added: set at case creation or toggled at any time from Case Overview; changes are audit logged; privileged cases display an amber badge in Case Overview and a Privileged badge on the dashboard case card
+
+**Evidence Numbering**
+- Evidence items can now be numbered with a custom prefix and digit count, configured per case at creation time with a live preview
+- Default format remains E001, E002... -- no change to existing behavior
+- Prefix accepts alphanumeric characters, hyphens, and underscores
+- `[[item_number]]` linking and autocomplete now use stored item numbers directly, supporting arbitrary formats like `[[DF-2025-001]]`
+
 ### v0.6.0 (2026-05-23)
 
-**Documentation Reminder Timer**
-- Countdown timer that alerts the examiner when too much time has passed without documenting
-- Full reset on committed note block or timeline entry add/edit; partial reset (half interval) on evidence status change or manual custody log entry
-- When the reminder fires, the application window comes to the foreground
-- Actions: Document Now (navigates focus to the active note editor), Snooze 15 min, Snooze 30 min, Pause reminders
-- Pause indicator bar with Resume button shown below the tab bar while reminders are paused
-- Configurable interval in Settings with inline warning below 30 minutes
-- Timer runs only during an unlocked case session; not interrupted by opening Settings
+**Documentation Reminder**
+- Countdown timer that fires a modal when the examiner has not documented for the configured interval
+- Full reset on committed note block or timeline entry add/edit; partial reset (half interval, minimum 1 minute) on evidence status change or manual custody log entry; task status changes do not reset the timer
+- Modal brings the application window to the foreground; four buttons: Document Now, Snooze 15 min, Snooze 30 min, Pause reminders; no dismiss button
+- Snooze resumes at full interval after the snooze period; pause is session-scoped and clears on case lock
+- Pause indicator banner with Resume button
+- Configurable from Settings: enable/disable toggle and interval in minutes (default 30); inline advisory shown when interval is below 30 minutes
 
 **Settings Modal**
-- Settings now opens as an overlay panel instead of navigating to a separate route
-- An active case stays unlocked and the documentation reminder timer keeps running during a Settings visit
-- Close with the X button, Escape key, or clicking the backdrop (backdrop click is blocked when unsaved changes are present)
+- Settings is now a modal overlay rather than a full-page route, so the active case stays unlocked and the documentation reminder timer keeps running during a Settings visit
+- Backdrop click closes Settings only when no unsaved changes are present; Escape key also closes
 
 ### v0.5.0 (2026-05-21)
 
 **PDF Export**
-- Full case PDF export via File > Export PDF (Cmd+P)
-- Classification level displayed as a color-coded header and footer bar on every page (green through dark red depending on level)
+- Full case PDF export via File > Export PDF
+- Classification level displayed as a color-coded header and footer bar on every page
 - Cover page with case metadata, examiner info, export timestamp, and dfnotes-go version
 - Table of contents with page numbers
-- Master Notes section: all committed blocks in chain order, each with verification hash (full SHA-256, labeled), commitment timestamp, block ID, and verification status; TAMPERED blocks shown in red
+- Master Notes section: all committed blocks in chain order, each with verification hash, commitment timestamp, block ID, and verification status; TAMPERED blocks shown in red
 - Evidence Items section: per-item metadata, custody log, and committed note blocks
 - IOC Summary section: confirmed and detected IOCs in a monospace table with defanged values; dismissed IOCs in a separate sub-table in gray
 - Timeline section: record-block format with timestamp, optional secondary timezone, event description, and investigator notes
-- Task List section: grouped by evidence item then by status (Open first, Not Applicable last); each task shows title, status, description, completion timestamp if applicable, and linked block references with committed timestamp and block ID
+- Task List section: grouped by evidence item then by status; each task shows title, status, description, completion timestamp if applicable, and linked block references
 - Chain Verification section: explanatory statement, chain-intact summary line, per-block validation table in monospace with red text for any failed rows
-- Appendix A: all image attachments from committed note blocks, labeled with source block ID and timestamp; image placeholders in note body reference the appendix
-- SHA-256 sidecar file written alongside the PDF (same format as sha256sum output)
-- Export logged in the audit trail
+- Appendix A: all image attachments from committed note blocks
+- SHA-256 sidecar file written alongside the PDF
 
 ### v0.4.5 (2026-05-19)
 
@@ -243,9 +264,8 @@ build/bin/dfnotes-go
 
 **User Guide**
 - Built-in help dialog accessible from Help > User Guide
-- 11 sections covering all application features
+- 12 sections covering all application features
 - Fully theme-aware, no hardcoded colors
-- Escape key and backdrop click to close
 
 ### v0.4.0 (2026-05-18)
 
@@ -276,7 +296,6 @@ build/bin/dfnotes-go
 **Export**
 - Full case export to AES-256 encrypted 7z archive
 - Separate archive password and native save location dialog
-- Archive contains case metadata, encrypted database, markdown block files, IOC summary, timeline, chain verification report
 - Export logged in the audit trail
 - Requires `p7zip-full` on Linux
 

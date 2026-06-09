@@ -14,6 +14,7 @@ const (
 	IOCTypeSHA1        IOCType = "sha1"
 	IOCTypeSHA256      IOCType = "sha256"
 	IOCTypeFilePath    IOCType = "file_path"
+	IOCTypeFile        IOCType = "file"
 	IOCTypeRegistryKey IOCType = "registry_key"
 	IOCTypeCVE         IOCType = "cve"
 )
@@ -59,6 +60,7 @@ type IOCRepository interface {
 	GetByBlock(ctx context.Context, blockID string) ([]IOCEntry, error)
 	ListByCase(ctx context.Context, caseID string, includeAll bool) ([]IOCEntry, error)
 	UpdateStatus(ctx context.Context, iocID string, status IOCStatus, confirmedAt *string) error
+	UpdateType(ctx context.Context, iocID string, iocType IOCType) error
 	// GetExistingByBlock returns a set of "type:value" keys already stored for blockID.
 	// Used by DetectAndStore to skip duplicates in one round-trip instead of N.
 	GetExistingByBlock(ctx context.Context, blockID string) (map[string]struct{}, error)

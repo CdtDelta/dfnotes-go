@@ -8,6 +8,7 @@ export type IOCType =
     | 'sha1'
     | 'sha256'
     | 'file_path'
+    | 'file'
     | 'registry_key'
     | 'cve';
 
