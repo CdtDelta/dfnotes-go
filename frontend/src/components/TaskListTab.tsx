@@ -48,10 +48,9 @@ function statusLabel(status: string): string {
 }
 
 function evidenceLabel(evidenceItemId: string, evidenceItems: services.EvidenceResponse[]): string {
-    const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    const idx = sorted.findIndex((e) => e.evidence_item_id === evidenceItemId);
-    if (idx === -1) return evidenceItemId;
-    return `E${String(idx + 1).padStart(3, '0')}`;
+    const item = evidenceItems.find((e) => e.evidence_item_id === evidenceItemId);
+    if (!item) return evidenceItemId;
+    return item.item_number;
 }
 
 function evidenceTabId(evidenceItemId: string): string {
@@ -328,9 +327,9 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                 >
                     <option value="all">All Evidence</option>
                     <option value="case_level">Case Level</option>
-                    {sortedEvidenceItems.map((item, idx) => (
+                    {sortedEvidenceItems.map((item) => (
                         <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                            E{String(idx + 1).padStart(3, '0')} - {item.name}
+                            {item.item_number} - {item.name}
                         </option>
                     ))}
                 </select>
@@ -370,9 +369,9 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                             className={INPUT_CLASS}
                         >
                             <option value="">Case Level</option>
-                            {sortedEvidenceItems.map((item, idx) => (
+                            {sortedEvidenceItems.map((item) => (
                                 <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                    E{String(idx + 1).padStart(3, '0')} - {item.name}
+                                    {item.item_number} - {item.name}
                                 </option>
                             ))}
                         </select>
@@ -562,9 +561,9 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                 className={INPUT_CLASS}
                             >
                                 <option value="">Case Level</option>
-                                {sortedEvidenceItems.map((item, idx) => (
+                                {sortedEvidenceItems.map((item) => (
                                     <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                        E{String(idx + 1).padStart(3, '0')} - {item.name}
+                                        {item.item_number} - {item.name}
                                     </option>
                                 ))}
                             </select>
@@ -750,9 +749,9 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                         className={INPUT_CLASS}
                                     >
                                         <option value="">Case Level</option>
-                                        {sortedEvidenceItems.map((item, idx) => (
+                                        {sortedEvidenceItems.map((item) => (
                                             <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                                E{String(idx + 1).padStart(3, '0')} - {item.name}
+                                                {item.item_number} - {item.name}
                                             </option>
                                         ))}
                                     </select>

@@ -12,7 +12,7 @@ dfnotes-go is built around a core principle: every note you write during an inve
 
 Beyond integrity, it handles the practical side of forensic case work:
 
-- Per-case encrypted storage with a separate case password
+- Per-case note content encryption (AES-256-GCM) with a separate case password -- note block text is encrypted at the application layer; case metadata, IOC values, timeline entries, and task descriptions are stored as plaintext in the database
 - Evidence item tracking with configurable numbering and chain of custody logging
 - Automated IOC detection (12 types) with confirm/false positive/type-correction workflow
 - Case timeline for key events
@@ -139,6 +139,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Master key derived from application password via Argon2id
 - Per-case encryption keys wrapped by the master key
 - All note block content encrypted with AES-256-GCM
+- **Encryption scope:** The SQLite database file is not encrypted as a whole. Note block text is encrypted at the application layer, but case metadata (title, examiner, classification, ticket number), IOC values, timeline entries, task descriptions, and evidence item names are stored as plaintext. Anyone with direct access to the .db file can read this metadata without a password. Use the encrypted 7z export for sharing case data externally.
 
 ### User Guide
 - Built-in help accessible from Help > User Guide
