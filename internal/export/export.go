@@ -106,6 +106,24 @@ type iocExport struct {
 	ConfirmedAt    string `json:"confirmed_at,omitempty"`
 }
 
+type caseFactExport struct {
+	FactID         string  `json:"fact_id"`
+	Type           string  `json:"type"`
+	Label          string  `json:"label"`
+	Value          string  `json:"value"`
+	EvidenceItemID *string `json:"evidence_item_id"`
+	SourceIOCID    *string `json:"source_ioc_id"`
+	SourceBlockID  *string `json:"source_block_id"`
+	Notes          string  `json:"notes"`
+	CreatedAt      string  `json:"created_at"`
+}
+
+type caseFactsSummary struct {
+	ExportedAt string           `json:"exported_at"`
+	Count      int              `json:"count"`
+	Facts      []caseFactExport `json:"facts"`
+}
+
 // ExportCase collects all case data, builds a directory tree, archives it with
 // 7z AES-256 encryption (shelling out to the 7z CLI), and returns the archive path.
 func ExportCase(
@@ -119,6 +137,7 @@ func ExportCase(
 	iocEntries []ioc.IOCEntry,
 	timelineEntries []models.TimelineEntry,
 	tasks []models.Task,
+	caseFacts []models.CaseFact,
 	progress ProgressFunc,
 ) (string, error) {
 	if _, err := exec.LookPath("7z"); err != nil {
@@ -290,6 +309,31 @@ func ExportCase(
 		return "", err
 	}
 
+	// --- case_facts.json ---
+	progress("writing case facts", 71)
+	factExports := make([]caseFactExport, 0, len(caseFacts))
+	for _, f := range caseFacts {
+		factExports = append(factExports, caseFactExport{
+			FactID:         f.FactID,
+			Type:           f.Type,
+			Label:          f.Label,
+			Value:          f.Value,
+			EvidenceItemID: f.EvidenceItemID,
+			SourceIOCID:    f.SourceIOCID,
+			SourceBlockID:  f.SourceBlockID,
+			Notes:          f.Notes,
+			CreatedAt:      f.CreatedAt,
+		})
+	}
+	factsEnvelope := caseFactsSummary{
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		Count:      len(factExports),
+		Facts:      factExports,
+	}
+	if err := writeJSON(filepath.Join(tmpDir, "case_facts.json"), factsEnvelope); err != nil {
+		return "", err
+	}
+
 	// --- chain_verification.json ---
 	progress("verifying chain", 75)
 	cv := buildChainVerification(caseData, rawBlocks, req.ExaminerPubKey)
@@ -437,6 +481,7 @@ evidence/           - Per-evidence-item metadata and note blocks.
 ioc_summary.json    - All IOC entries with status and source references.
 timeline.json       - All timeline entries.
 tasks.json          - All investigation tasks with status and linked block references.
+case_facts.json     - All case facts (informational investigation artifacts).
 chain_verification.json - Full hash chain data for independent verification.
 
 VERIFICATION

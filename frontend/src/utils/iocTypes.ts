@@ -12,7 +12,7 @@ export type IOCType =
     | 'registry_key'
     | 'cve';
 
-export type IOCStatus = 'detected' | 'confirmed' | 'false_positive';
+export type IOCStatus = 'detected' | 'confirmed' | 'false_positive' | 'promoted';
 
 export interface IOCEntry {
     ioc_id: string;

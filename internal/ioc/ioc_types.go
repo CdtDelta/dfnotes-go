@@ -25,6 +25,7 @@ const (
 	IOCStatusDetected      IOCStatus = "detected"
 	IOCStatusConfirmed     IOCStatus = "confirmed"
 	IOCStatusFalsePositive IOCStatus = "false_positive"
+	IOCStatusPromoted      IOCStatus = "promoted"
 )
 
 const (

@@ -62,7 +62,7 @@ function highlightTextSegment(
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
-        if (ioc.status === 'false_positive') {
+        if (ioc.status === 'false_positive' || ioc.status === 'promoted') {
             result += escaped;
         } else {
             result +=

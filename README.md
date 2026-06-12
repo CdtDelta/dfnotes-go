@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.7.0**
+**Version 0.8.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -12,9 +12,10 @@ dfnotes-go is built around a core principle: every note you write during an inve
 
 Beyond integrity, it handles the practical side of forensic case work:
 
-- Per-case note content encryption (AES-256-GCM) with a separate case password -- note block text is encrypted at the application layer; case metadata, IOC values, timeline entries, and task descriptions are stored as plaintext in the database
+- Per-case encrypted storage with a separate case password
 - Evidence item tracking with configurable numbering and chain of custody logging
-- Automated IOC detection (12 types) with confirm/false positive/type-correction workflow
+- Automated IOC detection (12 types) with confirm/false positive/promote workflow
+- Case Facts tab for informational artifacts that are not IOCs
 - Case timeline for key events
 - Task list with templates and note linking for investigation workflow tracking
 - Documentation reminder timer to prevent examiner tunnel vision
@@ -51,12 +52,24 @@ Beyond integrity, it handles the practical side of forensic case work:
 ### IOC Detection
 - Automatic detection on block commit for 12 IOC types: IPv4, IPv6, domain, URL, email, MD5, SHA1, SHA256, Windows file path, Unix file path, registry key, CVE
 - Manual "file" type for standalone filenames (e.g. NTUSER.DAT) -- not auto-detected, assignable via type correction
-- Yellow highlight for detected IOCs, red for confirmed; false positive IOCs render as plain unstyled text in block view (no strikethrough)
-- Right-click context menu to confirm, dismiss, or restore status
+- Yellow highlight for detected IOCs, red for confirmed; false positive and promoted IOCs render as plain unstyled text in block view
+- Right-click context menu to confirm, dismiss, promote to Case Facts, or restore status
 - IOC type editable from the IOC Summary tab via an inline dropdown -- useful when auto-detection misclassifies a value
 - Status or type changes in the IOC Summary tab immediately update highlights in all committed block views
 - IOC Summary tab with defanged display, filtering by type and evidence item, source navigation
+- Promoted IOCs appear in a separate section at the bottom of IOC Summary with a Restore action
 - All IOC values stored raw, defanged only on display
+
+### Case Facts
+- Dedicated tab (after Case Overview, before Master Notes) for informational investigation artifacts
+- Stores items like subject usernames, machine hostnames, IP addresses, OS versions, timezones, and similar reference data that are informational rather than indicators of compromise
+- 16 predefined types (username, hostname, IP address, MAC address, OS version, timezone, email address, account SID, full name, phone number, device serial, URL, file path, domain, registry key, custom)
+- Each fact has a type, description, value, optional evidence item association, optional source block link, and optional notes
+- IOCs can be promoted directly to Case Facts from the IOC Summary tab or from the right-click context menu in block view -- promotion sets the IOC to a "promoted" status (plain text in block view) and creates the fact with provenance back to the source IOC
+- Promoting an IOC is reversible: Restore in the promoted section of IOC Summary deletes the case fact and returns the IOC to detected status
+- Filterable by type and evidence item, combinable
+- Audit logged on create, update, and delete; not immutable
+- Included in both the 7z export archive (case_facts.json) and the PDF export
 
 ### Timeline
 - Manual timeline entries with ISO 8601 UTC timestamp (required) and optional secondary IANA timezone display
@@ -111,6 +124,7 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `master_notes/` -- one markdown file per committed block with hash/signature header
   - `evidence/[ITEM]/` -- metadata.json and block markdown files per evidence item
   - `ioc_summary.json` -- all IOCs with raw and defanged values
+  - `case_facts.json` -- all case facts with type, description, value, and source references
   - `timeline.json` -- all timeline entries
   - `tasks.json` -- all tasks with status, evidence item, and linked block references
   - `chain_verification.json` -- full hash chain with per-block validation results and `chain_intact` flag
@@ -120,10 +134,10 @@ Beyond integrity, it handles the practical side of forensic case work:
 ### PDF Export
 - Full case PDF export via File > Export PDF
 - Classification level header and footer on every page, color-coded by level
-- Sections: cover page, table of contents, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
+- Sections: cover page, table of contents, case facts, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
 - Note blocks rendered with full verification hash (SHA-256), commitment timestamp, and block ID
 - Chain verification section includes chain-intact summary and per-block signature and hash validation table
-- IOC values displayed defanged throughout
+- IOC values displayed defanged throughout; case fact values displayed raw
 - SHA-256 sidecar file written alongside the PDF for integrity verification
 - Export logged in the audit trail
 
@@ -139,7 +153,6 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Master key derived from application password via Argon2id
 - Per-case encryption keys wrapped by the master key
 - All note block content encrypted with AES-256-GCM
-- **Encryption scope:** The SQLite database file is not encrypted as a whole. Note block text is encrypted at the application layer, but case metadata (title, examiner, classification, ticket number), IOC values, timeline entries, task descriptions, and evidence item names are stored as plaintext. Anyone with direct access to the .db file can read this metadata without a password. Use the encrypted 7z export for sharing case data externally.
 
 ### User Guide
 - Built-in help accessible from Help > User Guide
@@ -197,10 +210,33 @@ build/bin/dfnotes-go
 - **Export requires 7z:** The export feature shells out to the system `7z` binary. If it is not installed, the export will fail with a clear error message. See Requirements above.
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
 - **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
+- **PDF foreign character sets:** The PDF export uses Latin-1 encoding and may not render characters outside that range correctly. Full UTF-8 font support is planned.
 
 ---
 
 ## Changelog
+
+### v0.8.0 (2026-06-12)
+
+**Case Facts**
+- New Case Facts tab (positioned after Case Overview, before Master Notes) for storing informational investigation artifacts that are not IOCs -- subject usernames, machine hostnames, IP addresses, OS versions, timezones, and similar reference data
+- Each fact has a type (16 predefined types plus custom), description, value, optional evidence item association, optional source block link, and optional notes
+- Filterable by type and evidence item, combinable with AND logic
+- Audit logged on create, update, and delete; not immutable
+- Included in the 7z export archive as case_facts.json and in the PDF export as a Case Facts section (between Case Overview and Master Notes)
+
+**IOC Promotion**
+- IOCs can now be promoted to Case Facts from the IOC Summary tab row actions or from the right-click context menu in committed block view
+- Promotion modal pre-fills type (mapped from IOC type) and value (raw, not defanged); description and any overrides are entered by the analyst
+- Promoted IOCs render as plain text in committed block view (same as false positive)
+- Promoted IOCs appear in a separate "Promoted to Case Facts" section at the bottom of IOC Summary, distinct from the false positives section
+- Restore action in the promoted section deletes the associated case fact and returns the IOC to detected status (yellow highlight) immediately via iocVersion increment
+- Migrations 012 (case_facts table) and 013 (ioc_entries rebuilt with promoted in CHECK constraint)
+
+### v0.7.1 (2026-06-10)
+
+**Bug Fixes**
+- Task list evidence item labels now use stored item_number values directly instead of deriving a positional E### label from sort order. Affected the task row evidence column, task detail panel linked note sources, and all evidence assignment dropdowns (filter toolbar, add task form, detail panel, apply template modal)
 
 ### v0.7.0 (2026-06-09)
 

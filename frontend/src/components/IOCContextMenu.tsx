@@ -12,6 +12,7 @@ interface IOCContextMenuProps {
     iocStatus: IOCStatus;
     onClose: () => void;
     onStatusChanged: (iocId: string, newStatus: IOCStatus) => void;
+    onPromoteRequested?: () => void;
 }
 
 const STATUS_ACTIONS: Record<IOCStatus, { label: string; next: IOCStatus }[]> = {
@@ -27,16 +28,18 @@ const STATUS_ACTIONS: Record<IOCStatus, { label: string; next: IOCStatus }[]> = 
         { label: 'Confirm as IOC', next: 'confirmed' },
         { label: 'Restore to Detected', next: 'detected' },
     ],
+    promoted: [],
 };
 
 const STATUS_LABELS: Record<IOCStatus, string> = {
     detected: 'Detected',
     confirmed: 'Confirmed',
     false_positive: 'False Positive',
+    promoted: 'Promoted',
 };
 
 export default function IOCContextMenu({
-    x, y, iocId, iocType, iocValue, iocStatus, onClose, onStatusChanged,
+    x, y, iocId, iocType, iocValue, iocStatus, onClose, onStatusChanged, onPromoteRequested,
 }: IOCContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const typeLabel = IOC_PATTERNS.find((p) => p.type === iocType)?.label ?? iocType;
@@ -66,10 +69,17 @@ export default function IOCContextMenu({
         onClose();
     };
 
-    const MENU_W = 200;
-    const MENU_H = 120;
+    const handlePromote = () => {
+        onClose();
+        onPromoteRequested?.();
+    };
+
+    const MENU_W = 220;
+    const MENU_H = 140;
     const left = Math.max(0, x + MENU_W > window.innerWidth  ? x - MENU_W : x);
     const top  = Math.max(0, y + MENU_H > window.innerHeight ? y - MENU_H : y);
+
+    const showPromote = onPromoteRequested && (iocStatus === 'detected' || iocStatus === 'confirmed');
 
     return (
         <div
@@ -96,6 +106,20 @@ export default function IOCContextMenu({
                         {action.label}
                     </button>
                 ))}
+                {showPromote && STATUS_ACTIONS[iocStatus].length > 0 && (
+                    <div className="border-t border-gray-700 my-1" />
+                )}
+                {showPromote && (
+                    <button
+                        onClick={handlePromote}
+                        className="w-full text-left px-3 py-1.5 text-sm text-green-400 hover:bg-gray-700 transition-colors"
+                    >
+                        Promote to Case Facts
+                    </button>
+                )}
+                {iocStatus === 'promoted' && (
+                    <p className="px-3 py-1.5 text-xs text-gray-500">Promoted to Case Facts</p>
+                )}
             </div>
         </div>
     );

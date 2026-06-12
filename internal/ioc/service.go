@@ -2,19 +2,42 @@ package ioc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"dfnotes-go/internal/models"
+
 	"github.com/google/uuid"
 )
 
+// CaseFactCreator is satisfied by *services.CaseFactService. Defined here to
+// avoid importing the services package (which would create a circular dependency).
+type CaseFactCreator interface {
+	CreateFact(ctx context.Context, userID string, req models.CreateCaseFactRequest) (models.CaseFact, error)
+}
+
+// AuditWriter is satisfied by *database.AuditRepo.
+type AuditWriter interface {
+	Create(ctx context.Context, entry *models.AuditLog) error
+}
+
 type IOCService struct {
-	repo IOCRepository
+	repo            IOCRepository
+	caseFactCreator CaseFactCreator
+	auditWriter     AuditWriter
 }
 
 func NewIOCService(repo IOCRepository) *IOCService {
 	return &IOCService{repo: repo}
+}
+
+// WithCaseFactSupport wires in the dependencies needed for PromoteToFact.
+func (s *IOCService) WithCaseFactSupport(creator CaseFactCreator, audit AuditWriter) *IOCService {
+	s.caseFactCreator = creator
+	s.auditWriter = audit
+	return s
 }
 
 // DetectAndStore scans plaintext content and persists any discovered IOCs.
@@ -103,4 +126,51 @@ func (s *IOCService) UpdateIOCType(ctx context.Context, iocID, iocType string) e
 // GetBlockIOCs returns all IOC entries for a specific committed block.
 func (s *IOCService) GetBlockIOCs(ctx context.Context, blockID string) ([]IOCEntry, error) {
 	return s.repo.GetByBlock(ctx, blockID)
+}
+
+// PromoteToFact moves an IOC into Case Facts: creates a case fact record, sets
+// the IOC status to promoted, and audit-logs the status change.
+func (s *IOCService) PromoteToFact(ctx context.Context, userID string, iocID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
+	if s.caseFactCreator == nil {
+		return models.CaseFact{}, errors.New("case fact support not initialized")
+	}
+
+	entry, err := s.repo.GetByID(ctx, iocID)
+	if err != nil {
+		return models.CaseFact{}, fmt.Errorf("get ioc: %w", err)
+	}
+
+	// Always set SourceIOCID from the ioc being promoted.
+	req.SourceIOCID = &iocID
+	req.CaseID = entry.CaseID
+
+	fact, err := s.caseFactCreator.CreateFact(ctx, userID, req)
+	if err != nil {
+		return models.CaseFact{}, fmt.Errorf("create case fact: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, iocID, IOCStatusPromoted, nil); err != nil {
+		return models.CaseFact{}, fmt.Errorf("update ioc status: %w", err)
+	}
+
+	if s.auditWriter != nil {
+		caseID := entry.CaseID
+		details, _ := json.Marshal(map[string]string{
+			"ioc_id":  iocID,
+			"status":  "promoted",
+			"fact_id": fact.FactID,
+		})
+		s.auditWriter.Create(ctx, &models.AuditLog{
+			LogID:      uuid.New().String(),
+			CaseID:     &caseID,
+			UserID:     userID,
+			Action:     models.AuditActionUpdate,
+			EntityType: "ioc_entry",
+			EntityID:   iocID,
+			Details:    details,
+			CreatedAt:  time.Now().UTC(),
+		})
+	}
+
+	return fact, nil
 }

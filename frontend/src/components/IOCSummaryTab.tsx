@@ -1,6 +1,9 @@
-import { useEffect, useState, useMemo } from 'react';
-import { GetCaseIOCs, UpdateIOCStatus, UpdateIOCType } from '../../wailsjs/go/main/App';
-import { services } from '../../wailsjs/go/models';
+import { useCallback, useEffect, useState, useMemo } from 'react';
+import {
+    GetCaseIOCs, UpdateIOCStatus, UpdateIOCType,
+    PromoteIOCToFact, RestorePromotedIOC, GetCaseFacts, GetFactTypes,
+} from '../../wailsjs/go/main/App';
+import { services, models } from '../../wailsjs/go/models';
 import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
 import { IOC_PATTERNS } from '../utils/iocPatterns';
 import { defang } from '../utils/defang';
@@ -17,7 +20,9 @@ interface IOCSummaryTabProps {
 type SortKey = 'type' | 'value' | 'status' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
-const STATUS_ORDER: Record<IOCStatus, number> = { confirmed: 0, detected: 1, false_positive: 2 };
+const STATUS_ORDER: Record<IOCStatus, number> = {
+    confirmed: 0, detected: 1, false_positive: 2, promoted: 3,
+};
 
 const TYPE_COLORS: Record<IOCType, string> = {
     ipv4: 'bg-blue-900 text-blue-300',
@@ -38,13 +43,45 @@ const STATUS_BADGE: Record<IOCStatus, string> = {
     detected: 'bg-yellow-900 text-yellow-300',
     confirmed: 'bg-red-900 text-red-300',
     false_positive: 'bg-gray-700 text-gray-400 line-through',
+    promoted: 'bg-green-900/40 text-green-300',
 };
 
 const STATUS_LABELS: Record<IOCStatus, string> = {
     detected: 'Detected',
     confirmed: 'Confirmed',
     false_positive: 'False Positive',
+    promoted: 'Promoted',
 };
+
+const FACT_TYPES = [
+    'username', 'hostname', 'ip_address', 'mac_address', 'os_version', 'timezone',
+    'email_address', 'account_sid', 'full_name', 'phone_number', 'device_serial',
+    'url', 'file_path', 'domain', 'registry_key', 'custom',
+];
+
+function formatFactType(t: string): string {
+    const special: Record<string, string> = {
+        ip_address: 'IP Address', mac_address: 'MAC Address',
+        os_version: 'OS Version', account_sid: 'Account SID', url: 'URL',
+    };
+    return special[t] ?? t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function iocTypeToFactType(iocType: IOCType): string {
+    const map: Partial<Record<IOCType, string>> = {
+        ipv4: 'ip_address', ipv6: 'ip_address',
+        domain: 'domain', url: 'url',
+        email: 'email_address',
+        file_path: 'file_path', file: 'file_path',
+        registry_key: 'registry_key',
+    };
+    return map[iocType] ?? 'custom';
+}
+
+const INPUT_CLASS = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
+const LABEL_CLASS = 'block text-xs text-gray-400 mb-1';
+
+interface PromotedFactEntry { factId: string; promotedAt: string; }
 
 export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIocStatusChange, evidencePrefix, evidenceSeqDigits }: IOCSummaryTabProps) {
     const [iocs, setIocs] = useState<IOCEntry[]>([]);
@@ -55,11 +92,47 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
     const [sortKey, setSortKey] = useState<SortKey>('status');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+    // Promote state
+    const [factTypes, setFactTypes] = useState<string[]>(FACT_TYPES);
+    const [promotedFactsMap, setPromotedFactsMap] = useState<Map<string, PromotedFactEntry>>(new Map());
+    const [showPromoteModal, setShowPromoteModal] = useState(false);
+    const [promoteIoc, setPromoteIoc] = useState<IOCEntry | null>(null);
+    const [promoteType, setPromoteType] = useState('');
+    const [promoteLabel, setPromoteLabel] = useState('');
+    const [promoteValue, setPromoteValue] = useState('');
+    const [promoteEvidenceId, setPromoteEvidenceId] = useState('');
+    const [promoteNotes, setPromoteNotes] = useState('');
+    const [promoteError, setPromoteError] = useState('');
+    const [promoting, setPromoting] = useState(false);
+
+    // Restore state
+    const [restoreConfirmId, setRestoreConfirmId] = useState<string | null>(null);
+    const [restoring, setRestoring] = useState(false);
+
+    // Fetch fact types once
     useEffect(() => {
-        GetCaseIOCs(caseId, showFPs)
-            .then((result) => setIocs((result as IOCEntry[]) || []))
+        GetFactTypes()
+            .then(types => { if (types?.length) setFactTypes(types); })
             .catch(() => {});
+    }, []);
+
+    const fetchAll = useCallback(() => {
+        Promise.all([
+            GetCaseIOCs(caseId, showFPs),
+            GetCaseFacts(caseId),
+        ]).then(([iocResult, factsResult]) => {
+            setIocs((iocResult as IOCEntry[]) || []);
+            const m = new Map<string, PromotedFactEntry>();
+            (factsResult || []).forEach(f => {
+                if (f.sourceIocId) m.set(f.sourceIocId, { factId: f.factId, promotedAt: f.createdAt });
+            });
+            setPromotedFactsMap(m);
+        }).catch(() => {});
     }, [caseId, showFPs]);
+
+    useEffect(() => {
+        fetchAll();
+    }, [fetchAll]);
 
     const evidenceMap = useMemo(() => {
         const m = new Map<string, string>();
@@ -70,10 +143,15 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
         return m;
     }, [evidenceItems, evidencePrefix, evidenceSeqDigits]);
 
+    const sortedEvidenceItems = useMemo(
+        () => [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+        [evidenceItems],
+    );
+
     const allTypes = useMemo(() => Array.from(new Set(iocs.map((i) => i.type))).sort(), [iocs]);
 
     const filtered = useMemo(() => {
-        let result = iocs;
+        let result = iocs.filter(i => i.status !== 'promoted');
         if (typeFilter.length > 0) {
             result = result.filter((i) => typeFilter.includes(i.type));
         }
@@ -103,6 +181,8 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
             return sortDir === 'asc' ? cmp : -cmp;
         });
     }, [filtered, sortKey, sortDir]);
+
+    const promotedIOCs = useMemo(() => iocs.filter(i => i.status === 'promoted'), [iocs]);
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -144,6 +224,56 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
         );
     };
 
+    const openPromoteModal = (ioc: IOCEntry) => {
+        setPromoteIoc(ioc);
+        setPromoteType(iocTypeToFactType(ioc.type));
+        setPromoteLabel('');
+        setPromoteValue(ioc.value);
+        setPromoteEvidenceId(ioc.evidence_item_id ?? '');
+        setPromoteNotes('');
+        setPromoteError('');
+        setShowPromoteModal(true);
+    };
+
+    const handlePromote = async () => {
+        if (!promoteIoc) return;
+        setPromoteError('');
+        if (!promoteLabel.trim()) { setPromoteError('Description is required.'); return; }
+        if (!promoteValue.trim()) { setPromoteError('Value is required.'); return; }
+        setPromoting(true);
+        try {
+            await PromoteIOCToFact(promoteIoc.ioc_id, {
+                caseId,
+                type: promoteType,
+                label: promoteLabel.trim(),
+                value: promoteValue.trim(),
+                evidenceItemId: promoteEvidenceId || undefined,
+                notes: promoteNotes.trim(),
+            } as models.CreateCaseFactRequest);
+            setShowPromoteModal(false);
+            onIocStatusChange();
+            fetchAll();
+        } catch (err: unknown) {
+            setPromoteError(String(err));
+        } finally {
+            setPromoting(false);
+        }
+    };
+
+    const handleRestore = async (iocId: string) => {
+        const entry = promotedFactsMap.get(iocId);
+        if (!entry) return;
+        setRestoring(true);
+        try {
+            await RestorePromotedIOC(iocId, entry.factId);
+            setRestoreConfirmId(null);
+            onIocStatusChange();
+            fetchAll();
+        } catch { /* ignore */ } finally {
+            setRestoring(false);
+        }
+    };
+
     const SortHeader = ({ label, k }: { label: string; k: SortKey }) => (
         <button
             onClick={() => handleSort(k)}
@@ -173,7 +303,7 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                     className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
                 >
                     <option value="">All Sources</option>
-                    {[...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((item, idx) => (
+                    {sortedEvidenceItems.map((item, idx) => (
                         <option key={item.evidence_item_id} value={item.evidence_item_id}>
                             {evidencePrefix}{String(idx + 1).padStart(evidenceSeqDigits, '0')} - {item.name}
                         </option>
@@ -211,7 +341,7 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                 </div>
             )}
 
-            {/* Table */}
+            {/* Main IOC Table */}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead>
@@ -279,6 +409,8 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                                                 <button onClick={() => handleStatusChange(ioc.ioc_id, 'confirmed')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Confirm</button>
                                                 <span className="text-gray-700 mx-1">/</span>
                                                 <button onClick={() => handleStatusChange(ioc.ioc_id, 'false_positive')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">FP</button>
+                                                <span className="text-gray-700 mx-1">/</span>
+                                                <button onClick={() => openPromoteModal(ioc)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
                                             </>
                                         )}
                                         {ioc.status === 'confirmed' && (
@@ -286,6 +418,8 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                                                 <button onClick={() => handleStatusChange(ioc.ioc_id, 'detected')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Unconfirm</button>
                                                 <span className="text-gray-700 mx-1">/</span>
                                                 <button onClick={() => handleStatusChange(ioc.ioc_id, 'false_positive')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">FP</button>
+                                                <span className="text-gray-700 mx-1">/</span>
+                                                <button onClick={() => openPromoteModal(ioc)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
                                             </>
                                         )}
                                         {ioc.status === 'false_positive' && (
@@ -302,6 +436,173 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                     </tbody>
                 </table>
             </div>
+
+            {/* Promoted to Case Facts section */}
+            {promotedIOCs.length > 0 && (
+                <div className="mt-2">
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm font-medium text-gray-300">Promoted to Case Facts</span>
+                        <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-green-900/40 text-green-300 border border-green-700/50">
+                            {promotedIOCs.length}
+                        </span>
+                        <div className="flex-1 border-t border-gray-700" />
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-left border-b border-gray-700">
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">IOC Type</th>
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">Value (defanged)</th>
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">Evidence Item</th>
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">Promoted At</th>
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-800">
+                                {promotedIOCs.map((ioc) => {
+                                    const factEntry = promotedFactsMap.get(ioc.ioc_id);
+                                    const sourceLabel = ioc.evidence_item_id
+                                        ? (evidenceMap.get(ioc.evidence_item_id) ?? ioc.evidence_item_id)
+                                        : 'Case Level';
+
+                                    if (restoreConfirmId === ioc.ioc_id) {
+                                        return (
+                                            <tr key={ioc.ioc_id} className="bg-amber-900/20">
+                                                <td colSpan={5} className="py-3 px-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-sm text-amber-300">
+                                                            Restore this IOC to detected status? The associated case fact will be deleted.
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleRestore(ioc.ioc_id)}
+                                                            disabled={restoring}
+                                                            className="text-xs bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 text-white px-3 py-1 rounded transition-colors"
+                                                        >
+                                                            {restoring ? 'Restoring...' : 'Restore'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setRestoreConfirmId(null)}
+                                                            className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 transition-colors"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+
+                                    return (
+                                        <tr key={ioc.ioc_id} className="hover:bg-gray-800">
+                                            <td className="py-2 pr-4">
+                                                <span className={`rounded text-xs font-medium px-1.5 py-0.5 ${TYPE_COLORS[ioc.type]}`}>
+                                                    {IOC_PATTERNS.find(p => p.type === ioc.type)?.label ?? ioc.type}
+                                                </span>
+                                            </td>
+                                            <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={defang(ioc.value, ioc.type)}>
+                                                {defang(ioc.value, ioc.type)}
+                                            </td>
+                                            <td className="py-2 pr-4 text-xs text-gray-400">{sourceLabel}</td>
+                                            <td className="py-2 pr-4 text-xs text-gray-500 font-mono whitespace-nowrap">
+                                                {factEntry ? new Date(factEntry.promotedAt).toLocaleString() : ''}
+                                            </td>
+                                            <td className="py-2 pr-4 text-xs">
+                                                <button
+                                                    onClick={() => setRestoreConfirmId(ioc.ioc_id)}
+                                                    className="text-xs text-gray-500 hover:text-amber-400 transition-colors"
+                                                >
+                                                    Restore
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Promote Modal */}
+            {showPromoteModal && promoteIoc && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-200">Promote to Case Facts</h3>
+                            <button onClick={() => setShowPromoteModal(false)} className="text-gray-500 hover:text-gray-300">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className={LABEL_CLASS}>Type *</label>
+                                <select value={promoteType} onChange={(e) => setPromoteType(e.target.value)} className={INPUT_CLASS}>
+                                    {factTypes.map(t => <option key={t} value={t}>{formatFactType(t)}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className={LABEL_CLASS}>Evidence Item</label>
+                                <select value={promoteEvidenceId} onChange={(e) => setPromoteEvidenceId(e.target.value)} className={INPUT_CLASS}>
+                                    <option value="">Case Level</option>
+                                    {sortedEvidenceItems.map((item, idx) => (
+                                        <option key={item.evidence_item_id} value={item.evidence_item_id}>
+                                            {evidencePrefix}{String(idx + 1).padStart(evidenceSeqDigits, '0')} - {item.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className={LABEL_CLASS}>Description *</label>
+                            <input
+                                type="text"
+                                value={promoteLabel}
+                                onChange={(e) => setPromoteLabel(e.target.value)}
+                                placeholder="e.g. Suspect workstation IP"
+                                className={INPUT_CLASS}
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label className={LABEL_CLASS}>Value *</label>
+                            <input
+                                type="text"
+                                value={promoteValue}
+                                onChange={(e) => setPromoteValue(e.target.value)}
+                                className={INPUT_CLASS}
+                            />
+                        </div>
+                        <div>
+                            <label className={LABEL_CLASS}>Notes</label>
+                            <textarea
+                                rows={2}
+                                value={promoteNotes}
+                                onChange={(e) => setPromoteNotes(e.target.value)}
+                                placeholder="Optional notes"
+                                className={INPUT_CLASS + ' resize-none'}
+                            />
+                        </div>
+                        {promoteError && <p className="text-xs text-red-400">{promoteError}</p>}
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handlePromote}
+                                disabled={promoting}
+                                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
+                            >
+                                {promoting ? 'Promoting...' : 'Promote to Case Facts'}
+                            </button>
+                            <button
+                                onClick={() => setShowPromoteModal(false)}
+                                className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

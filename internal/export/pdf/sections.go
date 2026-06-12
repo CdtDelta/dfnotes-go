@@ -161,6 +161,73 @@ type TOCEntry struct {
 	Page int
 }
 
+// BuildCaseFactsSection renders the Case Facts section.
+func BuildCaseFactsSection(p *fpdf.Fpdf, facts []models.CaseFact, evidenceItems []services.EvidenceResponse) (int, int) {
+	p.AddPage()
+	startPage := p.PageNo()
+	link := sectionHeading(p, "Case Facts", 0)
+
+	if len(facts) == 0 {
+		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetTextColor(80, 80, 80)
+		p.Cell(0, lineHeight, "No case facts recorded.")
+		p.Ln(-1)
+		return link, startPage
+	}
+
+	// Build evidence item_number lookup: evidenceItemID -> ItemNumber
+	itemNumbers := make(map[string]string, len(evidenceItems))
+	for _, item := range evidenceItems {
+		itemNumbers[item.EvidenceItemID] = item.ItemNumber
+	}
+
+	// Columns: Type | Label | Value | Evidence Item | Notes
+	// bodyWidth = 180mm
+	colWidths := []float64{28, 38, 50, 24, 40}
+	headers := []string{"Type", "Label", "Value", "Evidence Item", "Notes"}
+
+	rows := make([][]string, len(facts))
+	for i, f := range facts {
+		evLabel := "Case Level"
+		if f.EvidenceItemID != nil {
+			if num, ok := itemNumbers[*f.EvidenceItemID]; ok && num != "" {
+				evLabel = num
+			}
+		}
+		rows[i] = []string{
+			formatFactType(f.Type),
+			f.Label,
+			f.Value,
+			evLabel,
+			f.Notes,
+		}
+	}
+
+	DrawTable(p, headers, colWidths, rows, map[string]CellStyle{})
+	return link, startPage
+}
+
+// formatFactType converts a snake_case fact type to a display-formatted string.
+// Known abbreviations are fully uppercased; other words are title-cased.
+func formatFactType(t string) string {
+	acronyms := map[string]string{
+		"ip":  "IP",
+		"mac": "MAC",
+		"os":  "OS",
+		"sid": "SID",
+		"url": "URL",
+	}
+	parts := strings.Split(t, "_")
+	for i, p := range parts {
+		if upper, ok := acronyms[strings.ToLower(p)]; ok {
+			parts[i] = upper
+		} else if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // BuildMasterNotesSection renders the Master Notes section.
 func BuildMasterNotesSection(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock) (int, int) {
 	p.AddPage()

@@ -11,6 +11,7 @@ import MasterNotesTab from '../components/MasterNotesTab';
 import IOCSummaryTab from '../components/IOCSummaryTab';
 import TimelineTab from '../components/TimelineTab';
 import TaskListTab from '../components/TaskListTab';
+import CaseFactsTab from '../components/CaseFactsTab';
 import ErrorMessage from '../components/ErrorMessage';
 import ExportDialog from '../components/ExportDialog';
 import PasswordInput from '../components/PasswordInput';
@@ -141,6 +142,11 @@ export default function CaseDetailPage() {
         }
     }, []);
 
+    const handleNavigateToBlock = useCallback((blockId: string, evidenceItemId: string | null) => {
+        const tab = evidenceItemId ? `evidence-notes-${evidenceItemId}` : 'notes';
+        handleNavigate(tab, blockId);
+    }, [handleNavigate]);
+
     // Listen for menu Export Case event -- only triggers when case is unlocked
     useEffect(() => {
         const cleanup = EventsOn('menu:export-case', () => {
@@ -189,6 +195,7 @@ export default function CaseDetailPage() {
 
     const tabs: { id: string; label: string }[] = [
         { id: 'overview', label: 'Case Overview' },
+        { id: 'facts', label: 'Case Facts' },
         { id: 'notes', label: 'Master Notes' },
         ...evidenceTabs,
         { id: 'iocs', label: 'IOC Summary' },
@@ -309,6 +316,14 @@ export default function CaseDetailPage() {
                                 onPrivilegeChanged={(value) =>
                                     setCaseData((prev) => prev ? { ...prev, attorney_client_privilege: value } : prev)
                                 }
+                            />
+                        )}
+                        {activeTab === 'facts' && (
+                            <CaseFactsTab
+                                caseId={caseData.case_id}
+                                evidenceItems={evidenceItems}
+                                onNavigateToBlock={handleNavigateToBlock}
+                                iocVersion={iocVersion}
                             />
                         )}
                         {activeTab === 'evidence' && <EvidenceTab caseId={caseData.case_id} onEvidenceChanged={fetchEvidenceItems} />}

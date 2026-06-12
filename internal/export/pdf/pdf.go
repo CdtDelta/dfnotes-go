@@ -30,6 +30,7 @@ type PDFRequest struct {
 	IOCEntries       []ioc.IOCEntry
 	TimelineEntries  []models.TimelineEntry
 	Tasks            []models.Task
+	CaseFacts        []models.CaseFact
 	Attachments      map[string]*AttachmentInfo
 	AppVersion       string
 	ExportedAt       time.Time
@@ -104,7 +105,10 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 		})
 	}
 
-	link, pg := BuildMasterNotesSection(p, req.MasterBlocks, rawBlockMap)
+	link, pg := BuildCaseFactsSection(p, req.CaseFacts, req.EvidenceItems)
+	addSection("Case Facts", link, pg)
+
+	link, pg = BuildMasterNotesSection(p, req.MasterBlocks, rawBlockMap)
 	addSection("Master Notes", link, pg)
 
 	link, pg = BuildEvidenceSection(p, req.EvidenceItems, req.EvidenceBlockMap, rawBlockMap, evidenceIndex)

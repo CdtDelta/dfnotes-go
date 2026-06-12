@@ -77,3 +77,11 @@ type TaskRepository interface {
 	GetLinkedBlocks(ctx context.Context, taskID string) ([]LinkedBlock, error)
 	GetLinkedTasks(ctx context.Context, blockID string) ([]Task, error)
 }
+
+type CaseFactRepository interface {
+	Create(ctx context.Context, fact CaseFact) error
+	GetByCase(ctx context.Context, caseID string) ([]CaseFact, error)
+	GetByID(ctx context.Context, factID string) (CaseFact, error)
+	Update(ctx context.Context, fact CaseFact) error
+	Delete(ctx context.Context, factID string) error
+}

@@ -26,7 +26,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.7.0"
+const AppVersion = "0.8.0"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -47,6 +47,7 @@ type App struct {
 	iocService      *ioc.IOCService
 	timelineService *services.TimelineService
 	taskService     *services.TaskService
+	caseFactService *services.CaseFactService
 	timerService    timer.Service
 	backupScheduler *backup.Scheduler
 	noteBlockRepo   models.NoteBlockRepository
@@ -100,6 +101,7 @@ func (a *App) openDatabase(path string) error {
 	iocRepo := database.NewIOCRepo(db)
 	timelineRepo := database.NewTimelineRepo(db)
 	taskRepo := database.NewTaskRepo(db)
+	caseFactRepo := database.NewCaseFactRepo(db)
 
 	if a.timerService != nil {
 		a.timerService.Stop()
@@ -114,7 +116,8 @@ func (a *App) openDatabase(path string) error {
 	a.noteService = services.NewNoteService(noteBlockRepo, caseRepo, auditRepo, attachmentRepo, a.session, a.timerService)
 	a.evidenceService = services.NewEvidenceService(evidenceRepo, caseRepo, auditRepo, a.session, a.timerService)
 	a.tagService = services.NewTagService(tagRepo, a.session)
-	a.iocService = ioc.NewIOCService(iocRepo)
+	a.caseFactService = services.NewCaseFactService(caseFactRepo, auditRepo, a.session)
+	a.iocService = ioc.NewIOCService(iocRepo).WithCaseFactSupport(a.caseFactService, auditRepo)
 	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService)
 	a.taskService = services.NewTaskService(taskRepo, a.noteService, a.session)
 	a.noteBlockRepo = noteBlockRepo
@@ -368,6 +371,46 @@ func (a *App) GetBlockIOCs(blockID string) ([]ioc.IOCEntry, error) {
 	return a.iocService.GetBlockIOCs(a.ctx, blockID)
 }
 
+// PromoteIOCToFact moves an IOC into Case Facts, setting its status to promoted.
+func (a *App) PromoteIOCToFact(iocID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
+	userID := a.session.User().UserID
+	return a.iocService.PromoteToFact(a.ctx, userID, iocID, req)
+}
+
+// RestorePromotedIOC deletes the associated case fact and resets the IOC status to detected.
+func (a *App) RestorePromotedIOC(iocID string, factID string) error {
+	if err := a.caseFactService.DeleteFact(a.ctx, factID); err != nil {
+		return fmt.Errorf("delete case fact: %w", err)
+	}
+	return a.iocService.UpdateIOCStatus(a.ctx, iocID, "detected")
+}
+
+// CreateCaseFact adds a new case fact to the case.
+func (a *App) CreateCaseFact(req models.CreateCaseFactRequest) (models.CaseFact, error) {
+	userID := a.session.User().UserID
+	return a.caseFactService.CreateFact(a.ctx, userID, req)
+}
+
+// GetCaseFacts returns all case facts for a case, ordered by creation time.
+func (a *App) GetCaseFacts(caseID string) ([]models.CaseFact, error) {
+	return a.caseFactService.GetFacts(a.ctx, caseID)
+}
+
+// UpdateCaseFact updates a case fact's fields (type, label, value, notes, evidence item, source block).
+func (a *App) UpdateCaseFact(factID string, req models.UpdateCaseFactRequest) (models.CaseFact, error) {
+	return a.caseFactService.UpdateFact(a.ctx, factID, req)
+}
+
+// DeleteCaseFact permanently removes a case fact.
+func (a *App) DeleteCaseFact(factID string) error {
+	return a.caseFactService.DeleteFact(a.ctx, factID)
+}
+
+// GetFactTypes returns the predefined case fact type list.
+func (a *App) GetFactTypes() []string {
+	return models.PredefinedFactTypes
+}
+
 // GetTimelineEntries returns all timeline entries for a case, sorted by timestamp ASC.
 func (a *App) GetTimelineEntries(caseID string) ([]models.TimelineEntry, error) {
 	return a.timelineService.GetTimelineEntries(a.ctx, caseID)
@@ -607,6 +650,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 	iocService      := a.iocService
 	timelineService := a.timelineService
 	taskService     := a.taskService
+	caseFactService := a.caseFactService
 	identityService := a.identityService
 	dbPath          := a.cfg.DatabasePath
 
@@ -667,6 +711,12 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			return
 		}
 
+		caseFacts, err := caseFactService.GetFacts(ctx, caseID)
+		if err != nil {
+			emitErr(fmt.Sprintf("get case facts: %v", err))
+			return
+		}
+
 		user, err := identityService.GetFirstUser(ctx)
 		if err != nil {
 			emitErr(fmt.Sprintf("get user: %v", err))
@@ -684,7 +734,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 
 		archivePath, err := export.ExportCase(
 			ctx, req, caseData, evidenceItems, masterBlocks, evidenceBlockMap,
-			rawBlocks, iocEntries, timelineEntries, taskList,
+			rawBlocks, iocEntries, timelineEntries, taskList, caseFacts,
 			func(stage string, percent int) {
 				wailsruntime.EventsEmit(ctx, "export:progress", map[string]any{
 					"stage":   stage,
@@ -906,6 +956,12 @@ func (a *App) runExportCasePDF() {
 		return
 	}
 
+	caseFacts, err := a.caseFactService.GetFacts(ctx, caseID)
+	if err != nil {
+		showPDFError(ctx, "get case facts: "+err.Error())
+		return
+	}
+
 	user, err := a.identityService.GetFirstUser(ctx)
 	if err != nil {
 		showPDFError(ctx, "get user: "+err.Error())
@@ -958,6 +1014,7 @@ func (a *App) runExportCasePDF() {
 		IOCEntries:       iocEntries,
 		TimelineEntries:  timelineEntries,
 		Tasks:            taskList,
+		CaseFacts:        caseFacts,
 		Attachments:      attachments,
 		AppVersion:       AppVersion,
 	}

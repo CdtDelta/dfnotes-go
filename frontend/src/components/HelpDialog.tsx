@@ -195,6 +195,17 @@ const helpSections: HelpSection[] = [
                     Unix file paths are detected and appear in the IOC Summary tab but are not highlighted
                     inline in committed block text, as they produce too many false positives in typical notes.
                 </p>
+                <h3>Promoting to Case Facts</h3>
+                <p>
+                    Detected or confirmed IOCs can be promoted to Case Facts when they turn out to be
+                    known-good artifacts rather than threat indicators. Click <strong>Promote</strong> on
+                    any detected or confirmed row in the IOC Summary tab, or right-click a highlighted
+                    IOC value in a committed block and select <strong>Promote to Case Facts</strong>.
+                    A modal opens with the type and value pre-filled from the IOC; fill in the required
+                    description field and click <strong>Save</strong>. Promoted IOCs are removed from the
+                    main IOC table and appear instead in a <strong>Promoted to Case Facts</strong> section
+                    at the bottom of the IOC Summary tab.
+                </p>
                 <h3>Editing IOC Type</h3>
                 <p>
                     The IOC type assigned by auto-detection can be corrected from the IOC Summary tab via an
@@ -206,6 +217,94 @@ const helpSections: HelpSection[] = [
                     <code>NTUSER.DAT</code>). File IOCs are defanged with <code>[.]</code> before the extension.
                     This type is not auto-detected; it is only reachable by manually correcting the type of an
                     existing IOC in the Summary tab.
+                </p>
+            </div>
+        ),
+    },
+    {
+        title: 'Case Facts',
+        content: (
+            <div className="help-text">
+                <p>
+                    The Case Facts tab stores informational artifacts about an investigation -- things that are
+                    useful reference data but are not indicators of compromise. Examples include subject usernames,
+                    machine hostnames, operating system versions, IP addresses assigned to known-good systems,
+                    and timezone settings found on an examined device.
+                </p>
+                <p>
+                    Unlike IOCs, case facts are not detected automatically and carry no status lifecycle.
+                    They are plain reference records you create and maintain manually.
+                </p>
+                <h3>Fact Fields</h3>
+                <ul>
+                    <li><strong>Type</strong> -- the kind of fact. Choose from the predefined list (username,
+                        hostname, IP address, timezone, and so on) or select <strong>Custom</strong> for
+                        anything that does not fit a predefined category.</li>
+                    <li><strong>Description</strong> -- a short label identifying this specific fact
+                        (e.g. "Suspect primary account" or "Workstation local time offset").</li>
+                    <li><strong>Value</strong> -- the raw value (e.g. <code>jsmith</code> or <code>UTC-5</code>).
+                        Values are stored and displayed as entered, without defanging.</li>
+                    <li><strong>Evidence Item</strong> -- optionally links the fact to a specific evidence item.
+                        Defaults to Case Level if not assigned.</li>
+                    <li><strong>Source Block</strong> -- optionally links the fact to a committed note block
+                        where this information was first documented. Click the block link in the Source column
+                        to navigate directly to that block.</li>
+                    <li><strong>Notes</strong> -- free text for additional context. Optional.</li>
+                </ul>
+                <h3>Adding, Editing, and Deleting Facts</h3>
+                <p>
+                    Click <strong>Add Fact</strong> above the table to open the add form. Fill in the required
+                    fields (type, description, and value) and optionally assign an evidence item, source block,
+                    and notes. Click <strong>Save</strong> to create the fact or <strong>Cancel</strong> to discard.
+                </p>
+                <p>
+                    To edit a fact, click the <strong>Edit</strong> button on its row. The row converts to an
+                    inline form with the same fields. If the fact was created by promoting an IOC, the source
+                    IOC reference is shown as read-only and cannot be changed. Click <strong>Save</strong> to
+                    apply changes or <strong>Cancel</strong> to revert.
+                </p>
+                <p>
+                    To delete a fact, click the <strong>Delete</strong> button on its row. A confirmation prompt
+                    appears inline before the deletion is applied. Deletion is permanent and cannot be undone.
+                </p>
+                <h3>Filtering</h3>
+                <p>
+                    Use the filter toolbar above the table to narrow the display. The <strong>Type</strong>{' '}
+                    dropdown filters to a single fact type. The <strong>Evidence Item</strong> dropdown filters
+                    to a specific item or to Case Level entries only. Both filters can be combined -- only rows
+                    matching both conditions are shown. Clear either dropdown to remove that filter.
+                </p>
+                <h3>Promoting an IOC to Case Facts</h3>
+                <p>
+                    An IOC can be promoted to Case Facts when it turns out to be a known-good artifact rather
+                    than a threat indicator -- for example, an IP address that belongs to a monitored system,
+                    or a domain associated with approved software. Promoting it removes the IOC from the active
+                    IOC table and records it as a case fact instead.
+                </p>
+                <p>
+                    To promote from the IOC Summary tab, click <strong>Promote</strong> on any detected or
+                    confirmed IOC row. To promote from a committed block, right-click a highlighted IOC value
+                    and select <strong>Promote to Case Facts</strong>.
+                </p>
+                <p>
+                    The promote modal pre-fills the type (mapped from the IOC type) and the value. Fill in the
+                    required description field and adjust any other fields as needed, then click <strong>Save</strong>.
+                    The IOC's highlight in committed block views changes to plain text immediately.
+                </p>
+                <h3>Promoted Section in IOC Summary</h3>
+                <p>
+                    Promoted IOCs appear in a separate <strong>Promoted to Case Facts</strong> section at the
+                    bottom of the IOC Summary tab. The section shows the original IOC type, defanged value,
+                    associated evidence item, and the time the IOC was promoted. It is only rendered when at
+                    least one IOC has been promoted.
+                </p>
+                <h3>Restoring a Promoted IOC</h3>
+                <p>
+                    Click <strong>Restore</strong> on any row in the promoted section. A confirmation prompt
+                    appears: "Restore this IOC to detected status? The associated case fact will be deleted."
+                    Confirming deletes the case fact and returns the IOC to detected status, restoring its
+                    yellow highlight in committed block views. The IOC can then be reviewed or confirmed
+                    the same as any other detected IOC.
                 </p>
             </div>
         ),
@@ -270,7 +369,7 @@ const helpSections: HelpSection[] = [
                 <h3>Linking Notes to Tasks</h3>
                 <p>
                     Committed note blocks can be linked to tasks as documentation of the work performed.
-                    Open a task's detail panel (click the task title) and click <strong>Link a Note</strong>
+                    Open a task's detail panel (click the task title) and click <strong>Link a Note</strong>{' '}
                     to attach one or more committed blocks. A note can link to multiple tasks, and a task
                     can have multiple linked notes. At report time, linked notes show exactly where the
                     supporting detail was recorded.
@@ -353,7 +452,7 @@ const helpSections: HelpSection[] = [
                 <h3>Failure Notifications</h3>
                 <p>
                     If a scheduled backup fails, a notification banner appears at the top of the screen.
-                    It does not auto-dismiss. Use <strong>Snooze</strong> to delay the notification or
+                    It does not auto-dismiss. Use <strong>Snooze</strong> to delay the notification or{' '}
                     <strong>Dismiss</strong> to clear it. The last backup time and status are shown in
                     Settings and persist across application restarts.
                 </p>
@@ -418,7 +517,7 @@ const helpSections: HelpSection[] = [
                 </ul>
                 <h3>Database Location</h3>
                 <p>
-                    The current database path is shown in Settings. Click <strong>Change Location</strong>
+                    The current database path is shown in Settings. Click <strong>Change Location</strong>{' '}
                     to move the database to a new path (the file is moved and the original is deleted),
                     or to point the application at a different existing database (the original file is
                     untouched). The case must be locked before changing the database location.
