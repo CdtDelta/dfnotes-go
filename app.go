@@ -26,7 +26,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.8.0"
+const AppVersion = "0.8.5"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -369,6 +369,17 @@ func (a *App) UpdateIOCType(iocID string, iocType string) error {
 // GetBlockIOCs returns all IOC entries for a specific committed block.
 func (a *App) GetBlockIOCs(blockID string) ([]ioc.IOCEntry, error) {
 	return a.iocService.GetBlockIOCs(a.ctx, blockID)
+}
+
+// CreateManualIOC stores a user-selected text value as a confirmed IOC with
+// detection_method=manual. evidenceItemID may be an empty string (treated as null).
+func (a *App) CreateManualIOC(caseID, blockID, evidenceItemID, iocType, value string) error {
+	userID := a.session.User().UserID
+	var eid *string
+	if evidenceItemID != "" {
+		eid = &evidenceItemID
+	}
+	return a.iocService.CreateManualIOC(a.ctx, caseID, blockID, eid, iocType, value, userID)
 }
 
 // PromoteIOCToFact moves an IOC into Case Facts, setting its status to promoted.

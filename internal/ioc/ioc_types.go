@@ -65,4 +65,8 @@ type IOCRepository interface {
 	// GetExistingByBlock returns a set of "type:value" keys already stored for blockID.
 	// Used by DetectAndStore to skip duplicates in one round-trip instead of N.
 	GetExistingByBlock(ctx context.Context, blockID string) (map[string]struct{}, error)
+	// InsertManualIOC inserts a user-supplied IOC with detection_method=manual and
+	// status=confirmed. Returns models.ErrDuplicateKey if (block_id, type, value) already
+	// exists so callers can surface a clear error without inspecting the raw SQL message.
+	InsertManualIOC(ctx context.Context, iocID, caseID, blockID string, evidenceItemID *string, iocType IOCType, value, userID string) error
 }

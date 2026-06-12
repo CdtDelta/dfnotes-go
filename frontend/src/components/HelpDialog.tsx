@@ -183,6 +183,18 @@ const helpSections: HelpSection[] = [
                     From there you can confirm the IOC, dismiss it as a false positive, or restore
                     a previously reviewed IOC back to detected status.
                 </p>
+                <h3>Marking Selected Text as an IOC</h3>
+                <p>
+                    To capture a value the automatic pipeline did not detect -- for example, a standalone
+                    filename or a custom identifier -- highlight any text in a committed block view,
+                    right-click, and select <strong>Mark as IOC</strong>. A modal opens with the type
+                    pre-selected based on pattern matching against the selected text and the value
+                    pre-filled from the selection. If no pattern matches the selected text, the type
+                    field is left blank and must be chosen before submitting. The value is editable
+                    before saving. After saving, the highlight appears in the block view immediately
+                    without requiring a tab switch or restart. The IOC is stored with confirmed status
+                    and is visible in the IOC Summary tab.
+                </p>
                 <h3>IOC Summary Tab</h3>
                 <p>
                     The IOC Summary tab shows every detected IOC across the entire case. Values are displayed
@@ -266,6 +278,14 @@ const helpSections: HelpSection[] = [
                 <p>
                     To delete a fact, click the <strong>Delete</strong> button on its row. A confirmation prompt
                     appears inline before the deletion is applied. Deletion is permanent and cannot be undone.
+                </p>
+                <h3>Adding a Case Fact from a Selection</h3>
+                <p>
+                    To capture a value directly from a committed block, highlight the text in the
+                    block view, right-click, and select <strong>Add as Case Fact</strong>. The
+                    application navigates to the Case Facts tab and opens the add form with the value
+                    field pre-populated from the selection. Fill in the required type and description
+                    fields and click <strong>Save</strong> to create the fact.
                 </p>
                 <h3>Filtering</h3>
                 <p>

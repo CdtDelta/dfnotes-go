@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.8.0**
+**Version 0.8.5**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -15,6 +15,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Per-case encrypted storage with a separate case password
 - Evidence item tracking with configurable numbering and chain of custody logging
 - Automated IOC detection (12 types) with confirm/false positive/promote workflow
+- Manual IOC and Case Fact creation from selected text in committed block views
 - Case Facts tab for informational artifacts that are not IOCs
 - Case timeline for key events
 - Task list with templates and note linking for investigation workflow tracking
@@ -52,6 +53,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 ### IOC Detection
 - Automatic detection on block commit for 12 IOC types: IPv4, IPv6, domain, URL, email, MD5, SHA1, SHA256, Windows file path, Unix file path, registry key, CVE
 - Manual "file" type for standalone filenames (e.g. NTUSER.DAT) -- not auto-detected, assignable via type correction
+- Manual IOC creation from selected text: highlight any text in a committed block, right-click, choose "Mark as IOC" -- type is pre-selected via pattern matching, value is pre-filled and editable
 - Yellow highlight for detected IOCs, red for confirmed; false positive and promoted IOCs render as plain unstyled text in block view
 - Right-click context menu to confirm, dismiss, promote to Case Facts, or restore status
 - IOC type editable from the IOC Summary tab via an inline dropdown -- useful when auto-detection misclassifies a value
@@ -65,6 +67,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Stores items like subject usernames, machine hostnames, IP addresses, OS versions, timezones, and similar reference data that are informational rather than indicators of compromise
 - 16 predefined types (username, hostname, IP address, MAC address, OS version, timezone, email address, account SID, full name, phone number, device serial, URL, file path, domain, registry key, custom)
 - Each fact has a type, description, value, optional evidence item association, optional source block link, and optional notes
+- Quick entry from committed block view: highlight text, right-click, choose "Add as Case Fact" to open the add form pre-populated with the selection
 - IOCs can be promoted directly to Case Facts from the IOC Summary tab or from the right-click context menu in block view -- promotion sets the IOC to a "promoted" status (plain text in block view) and creates the fact with provenance back to the source IOC
 - Promoting an IOC is reversible: Restore in the promoted section of IOC Summary deletes the case fact and returns the IOC to detected status
 - Filterable by type and evidence item, combinable
@@ -207,6 +210,7 @@ build/bin/dfnotes-go
 - **Image clipboard paste** does not work on Linux due to WebKit2GTK Bug 218519. Use the "Attach Image" button in the editor toolbar to attach images via the native file dialog.
 - **IOC detection in code spans:** IOC patterns match content inside inline code spans (backtick-wrapped text). A hash or CVE inside a code span will be detected and highlighted.
 - **Unix file paths** are detected by the backend and appear in the IOC Summary tab but are not highlighted in the committed block view (too many false positives in rendered markdown).
+- **Manual IOC selection across formatting boundaries:** If a text selection spans a markdown formatting boundary (e.g. a bold tag splitting a filename), the stored value is correct but the highlight pipeline may not match it in the rendered HTML. The IOC will still appear correctly in IOC Summary.
 - **Export requires 7z:** The export feature shells out to the system `7z` binary. If it is not installed, the export will fail with a clear error message. See Requirements above.
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
 - **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
@@ -215,6 +219,16 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.8.5 (2026-06-12)
+
+**Manual IOC and Case Fact from Selection**
+- Highlight any text in a committed note block (Master Notes or any evidence tab), right-click, and choose "Mark as IOC" or "Add as Case Fact"
+- "Mark as IOC" opens a modal with the selected text pre-filled as the value; type is pre-selected via pattern matching (URL before domain, SHA256 before SHA1 before MD5); type is required if no pattern matches
+- Manually created IOCs are stored with detection_method = "manual" and status = "confirmed"; the highlight appears in the block view immediately via iocVersion increment -- no tab switch or restart required
+- "Add as Case Fact" switches to the Case Facts tab and opens the add form pre-populated with the selected text
+- Right-clicking an existing IOC highlight while a selection is active shows both the existing IOC options and the new selection options simultaneously
+- Duplicate manual IOC submissions (same block, type, and value) return a clear error message
 
 ### v0.8.0 (2026-06-12)
 

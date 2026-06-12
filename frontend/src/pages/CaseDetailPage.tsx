@@ -37,6 +37,12 @@ export default function CaseDetailPage() {
     const [reminderPaused, setReminderPaused] = useState(false);
     const [iocVersion, setIocVersion] = useState(0);
     const incrementIocVersion = useCallback(() => setIocVersion(v => v + 1), []);
+    const [caseFactPreFill, setCaseFactPreFill] = useState('');
+
+    const handleAddAsCaseFact = useCallback((value: string) => {
+        setCaseFactPreFill(value);
+        setActiveTab('facts');
+    }, []);
 
     // Always-current ref so the unmount cleanup can read the latest pageState
     const pageStateRef = useRef<PageState>('loading');
@@ -324,6 +330,8 @@ export default function CaseDetailPage() {
                                 evidenceItems={evidenceItems}
                                 onNavigateToBlock={handleNavigateToBlock}
                                 iocVersion={iocVersion}
+                                preAddValue={caseFactPreFill}
+                                onPreAddConsumed={() => setCaseFactPreFill('')}
                             />
                         )}
                         {activeTab === 'evidence' && <EvidenceTab caseId={caseData.case_id} onEvidenceChanged={fetchEvidenceItems} />}
@@ -336,6 +344,7 @@ export default function CaseDetailPage() {
                                 onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
                                 iocVersion={iocVersion}
                                 onIocStatusChange={incrementIocVersion}
+                                onAddAsCaseFact={handleAddAsCaseFact}
                             />
                         )}
                         {activeTab === 'iocs' && (
@@ -370,6 +379,7 @@ export default function CaseDetailPage() {
                                 onNavigateToTask={(taskId) => handleNavigate('tasks', taskId)}
                                 iocVersion={iocVersion}
                                 onIocStatusChange={incrementIocVersion}
+                                onAddAsCaseFact={handleAddAsCaseFact}
                             />
                         )}
                     </>

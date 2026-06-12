@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"dfnotes-go/internal/ioc"
 )
@@ -117,6 +118,18 @@ func (r *IOCRepo) GetExistingByBlock(ctx context.Context, blockID string) (map[s
 		existing[t+":"+v] = struct{}{}
 	}
 	return existing, rows.Err()
+}
+
+func (r *IOCRepo) InsertManualIOC(ctx context.Context, iocID, caseID, blockID string, evidenceItemID *string, iocType ioc.IOCType, value, userID string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO ioc_entries
+		    (ioc_id, case_id, block_id, evidence_item_id, type, value, status,
+		     detection_method, notes, created_at, confirmed_at, user_id)
+		 VALUES (?, ?, ?, ?, ?, ?, 'confirmed', 'manual', NULL, ?, NULL, ?)`,
+		iocID, caseID, blockID, nullString(evidenceItemID), string(iocType), value, now, userID,
+	)
+	return wrapError(err)
 }
 
 func (r *IOCRepo) scanEntries(rows *sql.Rows) ([]ioc.IOCEntry, error) {

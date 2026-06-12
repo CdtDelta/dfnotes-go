@@ -13,9 +13,10 @@ interface MasterNotesTabProps {
     onNavigateToTask?: (taskId: string) => void;
     iocVersion: number;
     onIocStatusChange: () => void;
+    onAddAsCaseFact?: (value: string) => void;
 }
 
-export default function MasterNotesTab({ caseId, evidenceItems, onEvidenceClick, onNavigateToTask, iocVersion, onIocStatusChange }: MasterNotesTabProps) {
+export default function MasterNotesTab({ caseId, evidenceItems, onEvidenceClick, onNavigateToTask, iocVersion, onIocStatusChange, onAddAsCaseFact }: MasterNotesTabProps) {
     const [content, setContent] = useState('');
     const [notes, setNotes] = useState<services.NoteBlockResponse[]>([]);
     const [loading, setLoading] = useState(true);
@@ -111,6 +112,7 @@ export default function MasterNotesTab({ caseId, evidenceItems, onEvidenceClick,
                                 onNavigateToTask={onNavigateToTask}
                                 iocVersion={iocVersion}
                                 onIocStatusChange={onIocStatusChange}
+                                onAddAsCaseFact={onAddAsCaseFact}
                             />
                         ))}
                     </div>

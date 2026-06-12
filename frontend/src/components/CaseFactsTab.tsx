@@ -11,6 +11,9 @@ interface CaseFactsTabProps {
     evidenceItems: services.EvidenceResponse[];
     onNavigateToBlock: (blockId: string, evidenceItemId: string | null) => void;
     iocVersion?: number;
+    /** Pre-populate the add form value and open it; cleared after first use. */
+    preAddValue?: string;
+    onPreAddConsumed?: () => void;
 }
 
 interface BlockEntry {
@@ -32,7 +35,7 @@ function formatFactType(t: string): string {
     return special[t] ?? t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-export default function CaseFactsTab({ caseId, evidenceItems, onNavigateToBlock, iocVersion }: CaseFactsTabProps) {
+export default function CaseFactsTab({ caseId, evidenceItems, onNavigateToBlock, iocVersion, preAddValue, onPreAddConsumed }: CaseFactsTabProps) {
     const [facts, setFacts] = useState<models.CaseFact[]>([]);
     const [factTypes, setFactTypes] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -94,6 +97,13 @@ export default function CaseFactsTab({ caseId, evidenceItems, onNavigateToBlock,
     useEffect(() => {
         fetchFacts();
     }, [fetchFacts, iocVersion]);
+
+    useEffect(() => {
+        if (!preAddValue) return;
+        setAddValue(preAddValue);
+        setShowAddForm(true);
+        onPreAddConsumed?.();
+    }, [preAddValue, onPreAddConsumed]);
 
     const loadBlocksOnce = useCallback(async () => {
         if (blocksLoadedRef.current) return;

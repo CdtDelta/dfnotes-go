@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { TagBlock, UntagBlock, GetBlockIOCs, GetAttachment, GetLinkedTasks, LinkNoteToTask, ListTasks, PromoteIOCToFact, GetFactTypes } from '../../wailsjs/go/main/App';
+import ManualIOCModal from './ManualIOCModal';
 import { services, models } from '../../wailsjs/go/models';
 import TagBadge from './TagBadge';
 import TagSelector from './TagSelector';
@@ -17,6 +18,10 @@ interface NoteBlockCardProps {
     onNavigateToTask?: (taskId: string) => void;
     iocVersion: number;
     onIocStatusChange: () => void;
+    /** Evidence item this block belongs to; used as the default evidenceItemId for manual IOCs. */
+    blockEvidenceItemId?: string;
+    /** Called when user selects "Add as Case Fact" from the context menu. */
+    onAddAsCaseFact?: (value: string) => void;
 }
 
 interface ContextMenuState {
@@ -27,6 +32,13 @@ interface ContextMenuState {
     iocValue: string;
     iocStatus: IOCStatus;
     evidenceItemId?: string;
+    selectionText?: string;
+}
+
+interface SelectionMenuState {
+    x: number;
+    y: number;
+    text: string;
 }
 
 const FACT_TYPES = [
@@ -57,7 +69,7 @@ function iocTypeToFactType(iocType: IOCType): string {
 const MODAL_INPUT = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
 const MODAL_LABEL = 'block text-xs text-gray-400 mb-1';
 
-export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged, onNavigateToTask, iocVersion, onIocStatusChange }: NoteBlockCardProps) {
+export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged, onNavigateToTask, iocVersion, onIocStatusChange, blockEvidenceItemId, onAddAsCaseFact }: NoteBlockCardProps) {
     const createdDate = new Date(block.created_at).toLocaleString();
     const shortHash = block.content_hash.substring(0, 12);
     const shortPrev = block.prev_hash === 'genesis'
@@ -84,6 +96,15 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     const [promoting, setPromoting] = useState(false);
     const [factTypes, setFactTypes] = useState<string[]>(FACT_TYPES);
     const factTypesLoadedRef = useRef(false);
+
+    // Selection-based context menu (no IOC highlight at cursor)
+    const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
+    const selectionMenuRef = useRef<HTMLDivElement>(null);
+
+    // Manual IOC modal
+    const [showManualIOCModal, setShowManualIOCModal] = useState(false);
+    const [manualIOCValue, setManualIOCValue] = useState('');
+    const [manualIOCEvidenceId, setManualIOCEvidenceId] = useState('');
 
     const fetchIOCs = useCallback(() => {
         GetBlockIOCs(block.block_id)
@@ -112,6 +133,22 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     useEffect(() => {
         fetchLinkedTasks();
     }, [fetchLinkedTasks]);
+
+    useEffect(() => {
+        if (!selectionMenu) return;
+        const onClick = (e: MouseEvent) => {
+            if (selectionMenuRef.current && !selectionMenuRef.current.contains(e.target as Node)) {
+                setSelectionMenu(null);
+            }
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectionMenu(null); };
+        document.addEventListener('mousedown', onClick);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onClick);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [selectionMenu]);
 
     const openTaskPicker = async () => {
         try {
@@ -151,21 +188,54 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     }, [highlightedHtml, caseId]);
 
     const handleContextMenu = (e: React.MouseEvent) => {
+        // Capture any active text selection before doing anything else.
+        const selection = window.getSelection()?.toString().trim() ?? '';
         const target = (e.target as HTMLElement).closest<HTMLElement>('.ioc-highlight');
-        if (!target) return;
+
+        if (!target && !selection) return;
+
         e.preventDefault();
-        const { iocId, iocType, iocValue, iocStatus } = target.dataset;
-        if (!iocId || !iocType || !iocValue || !iocStatus) return;
-        const fullIoc = iocs.find(i => i.ioc_id === iocId);
-        setContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            iocId,
-            iocType: iocType as IOCType,
-            iocValue,
-            iocStatus: iocStatus as IOCStatus,
-            evidenceItemId: fullIoc?.evidence_item_id,
-        });
+        setSelectionMenu(null);
+
+        if (target) {
+            const { iocId, iocType, iocValue, iocStatus } = target.dataset;
+            if (!iocId || !iocType || !iocValue || !iocStatus) {
+                if (selection) setSelectionMenu({ x: e.clientX, y: e.clientY, text: selection });
+                return;
+            }
+            const fullIoc = iocs.find(i => i.ioc_id === iocId);
+            setContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                iocId,
+                iocType: iocType as IOCType,
+                iocValue,
+                iocStatus: iocStatus as IOCStatus,
+                evidenceItemId: fullIoc?.evidence_item_id,
+                // If a selection spans a markdown formatting boundary, getSelection()
+                // returns correct plain text so the stored value is fine, but the
+                // highlight pipeline may not match it in the rendered HTML after
+                // iocVersion increments. The IOC still appears in IOC Summary. Do not
+                // engineer around this.
+                selectionText: selection || undefined,
+            });
+        } else {
+            setSelectionMenu({ x: e.clientX, y: e.clientY, text: selection });
+        }
+    };
+
+    const openManualIOCModal = (value: string, evidenceItemId?: string) => {
+        setContextMenu(null);
+        setSelectionMenu(null);
+        setManualIOCValue(value);
+        setManualIOCEvidenceId(evidenceItemId ?? blockEvidenceItemId ?? '');
+        setShowManualIOCModal(true);
+    };
+
+    const handleAddAsCaseFact = (value: string) => {
+        setContextMenu(null);
+        setSelectionMenu(null);
+        onAddAsCaseFact?.(value);
     };
 
     const openPromoteModal = () => {
@@ -312,8 +382,50 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                     onClose={() => setContextMenu(null)}
                     onStatusChanged={handleStatusChanged}
                     onPromoteRequested={openPromoteModal}
+                    selectionText={contextMenu.selectionText}
+                    onMarkAsIOC={contextMenu.selectionText
+                        ? () => openManualIOCModal(contextMenu.selectionText ?? '', contextMenu.evidenceItemId)
+                        : undefined}
+                    onAddAsCaseFact={contextMenu.selectionText
+                        ? () => handleAddAsCaseFact(contextMenu.selectionText ?? '')
+                        : undefined}
                 />
             )}
+
+            {selectionMenu && (() => {
+                const MENU_W = 220;
+                const MENU_H = 110;
+                const left = Math.max(0, selectionMenu.x + MENU_W > window.innerWidth ? selectionMenu.x - MENU_W : selectionMenu.x);
+                const top  = Math.max(0, selectionMenu.y + MENU_H > window.innerHeight ? selectionMenu.y - MENU_H : selectionMenu.y);
+                return (
+                    <div
+                        ref={selectionMenuRef}
+                        className="fixed z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-48"
+                        style={{ left, top }}
+                    >
+                        <div className="px-3 py-2 border-b border-gray-700">
+                            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Selection</div>
+                            <div className="text-xs text-gray-300 font-mono truncate max-w-64" title={selectionMenu.text}>
+                                {selectionMenu.text.length > 32 ? selectionMenu.text.slice(0, 32) + '…' : selectionMenu.text}
+                            </div>
+                        </div>
+                        <div className="py-1">
+                            <button
+                                onClick={() => openManualIOCModal(selectionMenu.text)}
+                                className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+                            >
+                                Mark as IOC
+                            </button>
+                            <button
+                                onClick={() => handleAddAsCaseFact(selectionMenu.text)}
+                                className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+                            >
+                                Add as Case Fact
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {showPromoteModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -430,6 +542,20 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                         </button>
                     </div>
                 </div>
+            )}
+
+            {showManualIOCModal && (
+                <ManualIOCModal
+                    caseId={caseId}
+                    blockId={block.block_id}
+                    evidenceItemId={manualIOCEvidenceId}
+                    value={manualIOCValue}
+                    onClose={() => setShowManualIOCModal(false)}
+                    onSave={() => {
+                        fetchIOCs();
+                        onIocStatusChange();
+                    }}
+                />
             )}
         </div>
     );

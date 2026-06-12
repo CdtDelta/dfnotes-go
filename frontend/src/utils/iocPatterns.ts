@@ -79,3 +79,16 @@ export const IOC_PATTERNS: IOCPattern[] = [
         label: 'Domain',
     },
 ];
+
+// detectIOCType runs the existing patterns against a value and returns the best
+// matching IOC type string, or null if nothing matches. Pattern ordering matters:
+// URL before domain, SHA256 before SHA1 before MD5. Used only for pre-selection
+// in the manual IOC modal -- not for authoritative detection.
+export function detectIOCType(value: string): string | null {
+    for (const pattern of IOC_PATTERNS) {
+        if (pattern.type === 'file') continue; // no auto-detection regex for 'file'
+        const re = new RegExp(pattern.regex.source, pattern.regex.flags.replace('g', ''));
+        if (re.test(value)) return pattern.type;
+    }
+    return null;
+}

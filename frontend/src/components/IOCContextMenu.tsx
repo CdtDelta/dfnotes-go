@@ -13,6 +13,11 @@ interface IOCContextMenuProps {
     onClose: () => void;
     onStatusChanged: (iocId: string, newStatus: IOCStatus) => void;
     onPromoteRequested?: () => void;
+    // Selection-based options appended below IOC options when a text selection
+    // was active at right-click time.
+    selectionText?: string;
+    onMarkAsIOC?: () => void;
+    onAddAsCaseFact?: () => void;
 }
 
 const STATUS_ACTIONS: Record<IOCStatus, { label: string; next: IOCStatus }[]> = {
@@ -40,6 +45,7 @@ const STATUS_LABELS: Record<IOCStatus, string> = {
 
 export default function IOCContextMenu({
     x, y, iocId, iocType, iocValue, iocStatus, onClose, onStatusChanged, onPromoteRequested,
+    selectionText, onMarkAsIOC, onAddAsCaseFact,
 }: IOCContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const typeLabel = IOC_PATTERNS.find((p) => p.type === iocType)?.label ?? iocType;
@@ -74,8 +80,9 @@ export default function IOCContextMenu({
         onPromoteRequested?.();
     };
 
+    const hasSelectionOptions = !!selectionText && (!!onMarkAsIOC || !!onAddAsCaseFact);
     const MENU_W = 220;
-    const MENU_H = 140;
+    const MENU_H = hasSelectionOptions ? 210 : 140;
     const left = Math.max(0, x + MENU_W > window.innerWidth  ? x - MENU_W : x);
     const top  = Math.max(0, y + MENU_H > window.innerHeight ? y - MENU_H : y);
 
@@ -119,6 +126,30 @@ export default function IOCContextMenu({
                 )}
                 {iocStatus === 'promoted' && (
                     <p className="px-3 py-1.5 text-xs text-gray-500">Promoted to Case Facts</p>
+                )}
+                {hasSelectionOptions && (
+                    <>
+                        <div className="border-t border-gray-700 my-1" />
+                        <div className="px-3 py-1 text-xs text-gray-500 truncate" title={selectionText}>
+                            Selection: &quot;{selectionText!.length > 28 ? selectionText!.slice(0, 28) + '…' : selectionText}&quot;
+                        </div>
+                        {onMarkAsIOC && (
+                            <button
+                                onClick={() => { onClose(); onMarkAsIOC!(); }}
+                                className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+                            >
+                                Mark as IOC
+                            </button>
+                        )}
+                        {onAddAsCaseFact && (
+                            <button
+                                onClick={() => { onClose(); onAddAsCaseFact!(); }}
+                                className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+                            >
+                                Add as Case Fact
+                            </button>
+                        )}
+                    </>
                 )}
             </div>
         </div>

@@ -128,6 +128,18 @@ func (s *IOCService) GetBlockIOCs(ctx context.Context, blockID string) ([]IOCEnt
 	return s.repo.GetByBlock(ctx, blockID)
 }
 
+// CreateManualIOC stores a user-supplied IOC with detection_method=manual and
+// status=confirmed. Value is stored raw with no defanging or detection pipeline.
+// Returns a descriptive error if (block_id, type, value) already exists.
+func (s *IOCService) CreateManualIOC(ctx context.Context, caseID, blockID string, evidenceItemID *string, iocType, value, userID string) error {
+	iocID := uuid.New().String()
+	err := s.repo.InsertManualIOC(ctx, iocID, caseID, blockID, evidenceItemID, IOCType(iocType), value, userID)
+	if errors.Is(err, models.ErrDuplicateKey) {
+		return fmt.Errorf("IOC with type %q and value %q already exists in this block", iocType, value)
+	}
+	return err
+}
+
 // PromoteToFact moves an IOC into Case Facts: creates a case fact record, sets
 // the IOC status to promoted, and audit-logs the status change.
 func (s *IOCService) PromoteToFact(ctx context.Context, userID string, iocID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
