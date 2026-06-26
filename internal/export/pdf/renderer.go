@@ -72,11 +72,11 @@ func (r *mdRenderer) renderHeading(n *ast.Heading) {
 		size = fontSizeH2
 	}
 	r.pdf.Ln(3)
-	r.pdf.SetFont("Helvetica", "B", size)
+	r.pdf.SetFont("DejaVu", "", size)
 	r.pdf.SetTextColor(30, 30, 30)
 	r.pdf.MultiCell(bodyWidth, lineHeight, text, "", "L", false)
 	r.pdf.Ln(2)
-	r.pdf.SetFont("Helvetica", "", fontSizeBody)
+	r.pdf.SetFont("DejaVu", "", fontSizeBody)
 }
 
 func (r *mdRenderer) renderParagraph(n *ast.Paragraph) {
@@ -92,7 +92,7 @@ func (r *mdRenderer) renderInlineNodes(parent ast.Node, width float64) {
 			return
 		}
 		buf.Reset()
-		r.pdf.SetFont("Helvetica", style, fontSizeBody)
+		r.pdf.SetFont("DejaVu", style, fontSizeBody)
 		r.pdf.SetTextColor(30, 30, 30)
 		r.pdf.MultiCell(width, lineHeight, t, "", "L", false)
 	}
@@ -114,27 +114,24 @@ func (r *mdRenderer) renderInlineNodes(parent ast.Node, width float64) {
 		case *ast.Emphasis:
 			flush("")
 			txt := r.inlineText(c)
-			style := "I"
-			if c.Level == 2 {
-				style = "B"
-			}
-			r.pdf.SetFont("Helvetica", style, fontSizeBody)
+			// TODO: embed DejaVuSans-Bold.ttf and DejaVuSans-Oblique.ttf for bold/italic support
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 30, 30)
 			r.pdf.MultiCell(width, lineHeight, txt, "", "L", false)
-			r.pdf.SetFont("Helvetica", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 		case *ast.CodeSpan:
 			flush("")
 			txt := string(c.Text(r.src))
-			r.pdf.SetFont("Courier", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 100, 30)
 			r.pdf.MultiCell(width, lineHeight, txt, "", "L", false)
-			r.pdf.SetFont("Helvetica", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 30, 30)
 		case *ast.Link:
 			flush("")
 			linkText := r.inlineText(c)
 			dest := string(c.Destination)
-			r.pdf.SetFont("Helvetica", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 30, 30)
 			r.pdf.MultiCell(width, lineHeight, linkText+" ("+dest+")", "", "L", false)
 		case *ast.Image:
@@ -144,15 +141,15 @@ func (r *mdRenderer) renderInlineNodes(parent ast.Node, width float64) {
 			if strings.HasPrefix(filename, "attachment:") {
 				filename = strings.TrimPrefix(filename, "attachment:")
 			}
-			r.pdf.SetFont("Helvetica", "I", fontSizeSm)
+			r.pdf.SetFont("DejaVu", "", fontSizeSm)
 			r.pdf.SetTextColor(100, 100, 100)
 			r.pdf.MultiCell(width, lineHeight, "[Image: "+filename+" -- see Appendix A]", "", "L", false)
-			r.pdf.SetFont("Helvetica", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 30, 30)
 		case *ast.AutoLink:
 			flush("")
 			url := string(c.URL(r.src))
-			r.pdf.SetFont("Helvetica", "", fontSizeBody)
+			r.pdf.SetFont("DejaVu", "", fontSizeBody)
 			r.pdf.SetTextColor(30, 30, 30)
 			r.pdf.MultiCell(width, lineHeight, url, "", "L", false)
 		default:
@@ -193,10 +190,10 @@ func (r *mdRenderer) renderCodeBlock(node ast.Node) {
 	r.pdf.SetFillColor(240, 240, 240)
 	r.pdf.Rect(x, y, bodyWidth, h+4, "F")
 	r.pdf.SetXY(x+2, y+2)
-	r.pdf.SetFont("Courier", "", fontSizeCode)
+	r.pdf.SetFont("DejaVu", "", fontSizeCode)
 	r.pdf.SetTextColor(30, 80, 30)
 	r.pdf.MultiCell(bodyWidth-4, lineHeight, text, "", "L", false)
-	r.pdf.SetFont("Helvetica", "", fontSizeBody)
+	r.pdf.SetFont("DejaVu", "", fontSizeBody)
 	r.pdf.SetTextColor(30, 30, 30)
 	r.pdf.Ln(3)
 }
@@ -209,10 +206,10 @@ func (r *mdRenderer) renderBlockquote(n *ast.Blockquote) {
 	r.pdf.SetDrawColor(180, 180, 180)
 	r.pdf.Line(marginLeft+1, y, marginLeft+1, y+20)
 	r.pdf.SetXY(x, y)
-	r.pdf.SetFont("Helvetica", "I", fontSizeBody)
+	r.pdf.SetFont("DejaVu", "", fontSizeBody)
 	r.pdf.SetTextColor(80, 80, 80)
 	r.walkChildren(n)
-	r.pdf.SetFont("Helvetica", "", fontSizeBody)
+	r.pdf.SetFont("DejaVu", "", fontSizeBody)
 	r.pdf.SetTextColor(30, 30, 30)
 	r.pdf.Ln(2)
 }
@@ -229,7 +226,7 @@ func (r *mdRenderer) renderListItem(n *ast.ListItem) {
 	depth := len(r.listKind)
 	indent := marginLeft + float64(depth)*6
 	r.pdf.SetX(indent)
-	r.pdf.SetFont("Helvetica", "", fontSizeBody)
+	r.pdf.SetFont("DejaVu", "", fontSizeBody)
 	r.pdf.SetTextColor(30, 30, 30)
 
 	var prefix string

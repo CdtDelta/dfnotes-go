@@ -447,6 +447,8 @@ type evidenceMeta struct {
 	Type            string                          `json:"type"`
 	AcquisitionHash string                          `json:"acquisition_hash"`
 	Status          string                          `json:"status"`
+	CurrentLocation string                          `json:"current_location"`
+	ArchiveLocation string                          `json:"archive_location"`
 	CreatedAt       string                          `json:"created_at"`
 	ChainOfCustody  []services.CustodyEntryResponse `json:"chain_of_custody"`
 }
@@ -459,6 +461,8 @@ func buildEvidenceMeta(item services.EvidenceResponse) evidenceMeta {
 		Type:            item.EvidenceType,
 		AcquisitionHash: item.ContentHash,
 		Status:          item.Status,
+		CurrentLocation: item.CurrentLocation,
+		ArchiveLocation: item.ArchiveLocation,
 		CreatedAt:       item.CreatedAt,
 		ChainOfCustody:  item.CustodyLog,
 	}

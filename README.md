@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.8.5**
+**Version 0.9.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -47,6 +47,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Status lifecycle: Collected, Analyzing, Processed, Archived, Withdrawn
 - Automatic chain of custody entries on status change, plus manual entries
 - Soft delete via Withdrawn status -- no hard deletes
+- Current location field: free-text field recording where evidence physically is right now; every change is auto-logged to the chain of custody with the old and new values
+- Archive location field: free-text field recording final disposition after a case closes; prompted via modal when an item is set to Archived (with a "Set Later" option); an amber badge appears in the detail view and list when an item is Archived but archive location has not been set; editable at any time from the detail view; changes do not generate custody log entries
 - Dynamic evidence tabs (E001, E002, etc.) each with their own note editor
 - Evidence linking in markdown using `[[E001]]` syntax (or any custom format like `[[DF-2025-001]]`) with autocomplete
 
@@ -125,7 +127,7 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `case_metadata.json` -- case metadata in plaintext
   - `[CASENUMBER].db` -- the encrypted SQLite database
   - `master_notes/` -- one markdown file per committed block with hash/signature header
-  - `evidence/[ITEM]/` -- metadata.json and block markdown files per evidence item
+  - `evidence/[ITEM]/` -- metadata.json (includes current_location and archive_location) and block markdown files per evidence item
   - `ioc_summary.json` -- all IOCs with raw and defanged values
   - `case_facts.json` -- all case facts with type, description, value, and source references
   - `timeline.json` -- all timeline entries
@@ -214,11 +216,30 @@ build/bin/dfnotes-go
 - **Export requires 7z:** The export feature shells out to the system `7z` binary. If it is not installed, the export will fail with a clear error message. See Requirements above.
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
 - **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
-- **PDF foreign character sets:** The PDF export uses Latin-1 encoding and may not render characters outside that range correctly. Full UTF-8 font support is planned.
+- **PDF bold text:** The PDF export renders bold text in regular weight. DejaVu Sans Bold is not yet embedded; bold style falls back to regular weight throughout the PDF.
 
 ---
 
 ## Changelog
+
+### v0.9.0 (2026-06-26)
+
+**Evidence Location Fields**
+- Two new fields on every evidence item: Current Location (where the evidence is now) and Archive Location (final disposition after case closes)
+- Current Location: free-text, editable at any time from the detail view; every change auto-logs a chain of custody entry with old and new values (e.g. "Location updated: Evidence locker B-12 -> Examiner workstation 3")
+- Archive Location: free-text, editable at any time; prompted via modal when an item transitions to Archived status; modal includes a "Set Later" option that closes without saving; changes do not generate custody log entries
+- Amber warning badge shown in the evidence detail view header and as an indicator on the evidence list when an item is Archived but archive location has not been recorded; badge clears immediately when the field is populated
+- Withdrawn status does not trigger the archive location modal
+- Migration 014 adds current_location and archive_location columns to evidence_items
+
+**Export Format Updates**
+- Both location fields are now included in evidence metadata.json inside the 7z archive export (present even when empty, as empty strings)
+- PDF evidence items section renders Current Location and Archive Location rows when non-empty; no blank rows for unset fields
+
+**PDF UTF-8 Font**
+- Replaced the Latin-1 default font with embedded DejaVu Sans via go:embed and AddUTF8FontFromBytes
+- Covers Latin Extended, Cyrillic, and Greek character ranges; CJK is a separate future decision
+- Bold text currently renders in regular weight (DejaVu Sans Bold not yet embedded); all bold SetFont calls fall back to regular style
 
 ### v0.8.5 (2026-06-12)
 

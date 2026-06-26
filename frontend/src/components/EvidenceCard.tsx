@@ -25,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function EvidenceCard({ item, onSelect }: EvidenceCardProps) {
     const isWithdrawn = item.status === 'WITHDRAWN';
+    const missingArchiveLocation = item.status === 'ARCHIVED' && !item.archive_location;
     const typeColor = TYPE_COLORS[item.evidence_type] || TYPE_COLORS.OTHER;
     const statusColor = STATUS_COLORS[item.status] || STATUS_COLORS.COLLECTED;
     const tags = item.tags || [];
@@ -37,7 +38,12 @@ export default function EvidenceCard({ item, onSelect }: EvidenceCardProps) {
             }`}
         >
             <div className="flex items-start justify-between mb-2">
-                <h4 className="text-sm font-semibold text-gray-100 truncate mr-2">{item.name}</h4>
+                <div className="flex items-center gap-1.5 min-w-0 mr-2">
+                    <h4 className="text-sm font-semibold text-gray-100 truncate">{item.name}</h4>
+                    {missingArchiveLocation && (
+                        <span className="shrink-0 w-2 h-2 rounded-full bg-amber-500" title="Archive location not recorded" />
+                    )}
+                </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                     <span className={`text-xs px-1.5 py-0.5 rounded border ${typeColor}`}>
                         {item.evidence_type}

@@ -26,7 +26,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.8.5"
+const AppVersion = "0.9.0"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -303,6 +303,18 @@ func (a *App) UpdateEvidenceStatus(req services.UpdateEvidenceStatusRequest) (*s
 // AddCustodyEntry adds a custody chain entry to an evidence item.
 func (a *App) AddCustodyEntry(req services.AddCustodyEntryRequest) (*services.EvidenceResponse, error) {
 	return a.evidenceService.AddCustodyEntry(a.ctx, req)
+}
+
+// UpdateEvidenceCurrentLocation updates the current location of an evidence item and
+// writes a custody log entry describing the change.
+func (a *App) UpdateEvidenceCurrentLocation(itemID string, oldLocation string, newLocation string) error {
+	return a.evidenceService.UpdateCurrentLocation(a.ctx, itemID, oldLocation, newLocation)
+}
+
+// UpdateEvidenceArchiveLocation updates the archive location of an evidence item.
+// No custody log entry is written; archive location is a disposition record, not a movement event.
+func (a *App) UpdateEvidenceArchiveLocation(itemID string, newLocation string) error {
+	return a.evidenceService.UpdateArchiveLocation(a.ctx, itemID, newLocation)
 }
 
 // ListTags returns all available tags.

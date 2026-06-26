@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AddEvidence, ListEvidence, GetEvidence } from '../../wailsjs/go/main/App';
+import { AddEvidence, ListEvidence, GetEvidence, UpdateEvidenceCurrentLocation } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
 import EvidenceCard from './EvidenceCard';
 import EvidenceDetailView from './EvidenceDetailView';
@@ -24,6 +24,7 @@ export default function EvidenceTab({ caseId, onEvidenceChanged }: EvidenceTabPr
     const [formDescription, setFormDescription] = useState('');
     const [formType, setFormType] = useState('DISK');
     const [formHash, setFormHash] = useState('');
+    const [formCurrentLocation, setFormCurrentLocation] = useState('');
     const [adding, setAdding] = useState(false);
 
     const fetchItems = useCallback(() => {
@@ -43,17 +44,21 @@ export default function EvidenceTab({ caseId, onEvidenceChanged }: EvidenceTabPr
         setAdding(true);
         setError('');
         try {
-            await AddEvidence({
+            const newItem = await AddEvidence({
                 case_id: caseId,
                 name: formName.trim(),
                 description: formDescription.trim(),
                 evidence_type: formType,
                 content_hash: formHash.trim(),
             } as services.AddEvidenceRequest);
+            if (formCurrentLocation.trim()) {
+                await UpdateEvidenceCurrentLocation(newItem.evidence_item_id, '', formCurrentLocation.trim());
+            }
             setFormName('');
             setFormDescription('');
             setFormType('DISK');
             setFormHash('');
+            setFormCurrentLocation('');
             setShowForm(false);
             fetchItems();
             onEvidenceChanged?.();
@@ -157,6 +162,16 @@ export default function EvidenceTab({ caseId, onEvidenceChanged }: EvidenceTabPr
                                     className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-100 text-sm font-mono focus:outline-none focus:border-blue-500 placeholder-gray-600"
                                 />
                             </div>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-400 mb-1 block">Current Location</label>
+                            <input
+                                type="text"
+                                value={formCurrentLocation}
+                                onChange={(e) => setFormCurrentLocation(e.target.value)}
+                                placeholder="e.g., Evidence locker B-12, Examiner workstation 3"
+                                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-100 text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                            />
                         </div>
                         <div className="flex justify-end">
                             <button

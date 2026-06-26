@@ -40,19 +40,21 @@ type CustodyEntryResponse struct {
 }
 
 type EvidenceResponse struct {
-	EvidenceItemID string                 `json:"evidence_item_id"`
-	CaseID         string                 `json:"case_id"`
-	Name           string                 `json:"name"`
-	Description    string                 `json:"description"`
-	EvidenceType   string                 `json:"evidence_type"`
-	Status         string                 `json:"status"`
-	ContentHash    string                 `json:"content_hash"`
-	CustodyLog     []CustodyEntryResponse `json:"custody_log"`
-	CollectedBy    string                 `json:"collected_by"`
-	CollectedAt    string                 `json:"collected_at"`
-	CreatedAt      string                 `json:"created_at"`
-	Tags           []TagResponse          `json:"tags"`
-	ItemNumber     string                 `json:"item_number"`
+	EvidenceItemID  string                 `json:"evidence_item_id"`
+	CaseID          string                 `json:"case_id"`
+	Name            string                 `json:"name"`
+	Description     string                 `json:"description"`
+	EvidenceType    string                 `json:"evidence_type"`
+	Status          string                 `json:"status"`
+	ContentHash     string                 `json:"content_hash"`
+	CustodyLog      []CustodyEntryResponse `json:"custody_log"`
+	CollectedBy     string                 `json:"collected_by"`
+	CollectedAt     string                 `json:"collected_at"`
+	CreatedAt       string                 `json:"created_at"`
+	Tags            []TagResponse          `json:"tags"`
+	ItemNumber      string                 `json:"item_number"`
+	CurrentLocation string                 `json:"current_location"`
+	ArchiveLocation string                 `json:"archive_location"`
 }
 
 type EvidenceService struct {
@@ -284,6 +286,63 @@ func (s *EvidenceService) AddCustodyEntry(ctx context.Context, req AddCustodyEnt
 	return s.evidenceToResponse(item), nil
 }
 
+func (s *EvidenceService) UpdateCurrentLocation(ctx context.Context, itemID, oldLocation, newLocation string) error {
+	if !s.session.IsAuthenticated() {
+		return errors.New("not authenticated")
+	}
+	if itemID == "" {
+		return errors.New("evidence item ID is required")
+	}
+
+	item, err := s.evidenceRepo.GetByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+
+	user := s.session.User()
+	now := time.Now().UTC()
+
+	var description string
+	switch {
+	case oldLocation == "":
+		description = fmt.Sprintf("Location recorded: %s", newLocation)
+	case newLocation == "":
+		description = fmt.Sprintf("Location cleared (was: %s)", oldLocation)
+	default:
+		description = fmt.Sprintf("Location updated: %s -> %s", oldLocation, newLocation)
+	}
+
+	item.CurrentLocation = newLocation
+	item.UpdatedAt = now
+	item.CustodyLog = append(item.CustodyLog, models.CustodyEntry{
+		Timestamp:   now,
+		Handler:     user.Name,
+		Action:      "LOCATION_UPDATE",
+		Description: description,
+	})
+
+	return s.evidenceRepo.Update(ctx, item)
+}
+
+func (s *EvidenceService) UpdateArchiveLocation(ctx context.Context, itemID, newLocation string) error {
+	if !s.session.IsAuthenticated() {
+		return errors.New("not authenticated")
+	}
+	if itemID == "" {
+		return errors.New("evidence item ID is required")
+	}
+
+	item, err := s.evidenceRepo.GetByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+
+	item.ArchiveLocation = newLocation
+	item.UpdatedAt = time.Now().UTC()
+
+	return s.evidenceRepo.Update(ctx, item)
+}
+
 func (s *EvidenceService) evidenceToResponse(item *models.EvidenceItem) *EvidenceResponse {
 	// Resolve collected_by user ID to display name
 	collectedBy := item.CollectedBy
@@ -306,18 +365,20 @@ func (s *EvidenceService) evidenceToResponse(item *models.EvidenceItem) *Evidenc
 	}
 
 	return &EvidenceResponse{
-		EvidenceItemID: item.EvidenceItemID,
-		CaseID:         item.CaseID,
-		Name:           item.Name,
-		Description:    item.Description,
-		EvidenceType:   string(item.EvidenceType),
-		Status:         string(item.Status),
-		ContentHash:    item.ContentHash,
-		CustodyLog:     custodyLog,
-		CollectedBy:    collectedBy,
-		CollectedAt:    item.CollectedAt.UTC().Format(time.RFC3339),
-		CreatedAt:      item.CreatedAt.UTC().Format(time.RFC3339),
-		Tags:           tags,
-		ItemNumber:     item.ItemNumber,
+		EvidenceItemID:  item.EvidenceItemID,
+		CaseID:          item.CaseID,
+		Name:            item.Name,
+		Description:     item.Description,
+		EvidenceType:    string(item.EvidenceType),
+		Status:          string(item.Status),
+		ContentHash:     item.ContentHash,
+		CustodyLog:      custodyLog,
+		CollectedBy:     collectedBy,
+		CollectedAt:     item.CollectedAt.UTC().Format(time.RFC3339),
+		CreatedAt:       item.CreatedAt.UTC().Format(time.RFC3339),
+		Tags:            tags,
+		ItemNumber:      item.ItemNumber,
+		CurrentLocation: item.CurrentLocation,
+		ArchiveLocation: item.ArchiveLocation,
 	}
 }

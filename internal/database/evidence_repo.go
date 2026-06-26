@@ -22,20 +22,20 @@ func (r *EvidenceRepo) Create(ctx context.Context, item *models.EvidenceItem) er
 	}
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO evidence_items (evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO evidence_items (evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number, current_location, archive_location)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.EvidenceItemID, item.CaseID, item.Name, item.Description,
 		string(item.EvidenceType), string(item.Status), item.ContentHash,
 		string(custodyJSON), item.CollectedBy,
 		FormatTime(item.CollectedAt), FormatTime(item.CreatedAt), FormatTime(item.UpdatedAt),
-		item.ItemNumber,
+		item.ItemNumber, nullableString(item.CurrentLocation), nullableString(item.ArchiveLocation),
 	)
 	return wrapError(err)
 }
 
 func (r *EvidenceRepo) GetByID(ctx context.Context, evidenceItemID string) (*models.EvidenceItem, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number
+		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number, current_location, archive_location
 		 FROM evidence_items WHERE evidence_item_id = ?`, evidenceItemID)
 
 	item, err := r.scanItem(row)
@@ -53,7 +53,7 @@ func (r *EvidenceRepo) GetByID(ctx context.Context, evidenceItemID string) (*mod
 
 func (r *EvidenceRepo) ListByCase(ctx context.Context, caseID string) ([]models.EvidenceItem, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number
+		`SELECT evidence_item_id, case_id, name, description, evidence_type, status, content_hash, custody_log, collected_by, collected_at, created_at, updated_at, item_number, current_location, archive_location
 		 FROM evidence_items WHERE case_id = ? ORDER BY created_at DESC`, caseID)
 	if err != nil {
 		return nil, wrapError(err)
@@ -89,10 +89,12 @@ func (r *EvidenceRepo) Update(ctx context.Context, item *models.EvidenceItem) er
 	}
 
 	result, err := r.db.ExecContext(ctx,
-		`UPDATE evidence_items SET name=?, description=?, evidence_type=?, status=?, content_hash=?, custody_log=?, updated_at=?
+		`UPDATE evidence_items SET name=?, description=?, evidence_type=?, status=?, content_hash=?, custody_log=?, updated_at=?, current_location=?, archive_location=?
 		 WHERE evidence_item_id=?`,
 		item.Name, item.Description, string(item.EvidenceType), string(item.Status),
-		item.ContentHash, string(custodyJSON), FormatTime(item.UpdatedAt), item.EvidenceItemID,
+		item.ContentHash, string(custodyJSON), FormatTime(item.UpdatedAt),
+		nullableString(item.CurrentLocation), nullableString(item.ArchiveLocation),
+		item.EvidenceItemID,
 	)
 	if err != nil {
 		return wrapError(err)
@@ -136,10 +138,12 @@ type scanner interface {
 func (r *EvidenceRepo) scanItem(s scanner) (*models.EvidenceItem, error) {
 	var item models.EvidenceItem
 	var evType, status, custodyJSON, collectedAt, createdAt, updatedAt string
+	var currentLocation, archiveLocation *string
 
 	err := s.Scan(&item.EvidenceItemID, &item.CaseID, &item.Name, &item.Description,
 		&evType, &status, &item.ContentHash, &custodyJSON,
-		&item.CollectedBy, &collectedAt, &createdAt, &updatedAt, &item.ItemNumber)
+		&item.CollectedBy, &collectedAt, &createdAt, &updatedAt, &item.ItemNumber,
+		&currentLocation, &archiveLocation)
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -150,9 +154,25 @@ func (r *EvidenceRepo) scanItem(s scanner) (*models.EvidenceItem, error) {
 	item.CreatedAt, _ = ParseTime(createdAt)
 	item.UpdatedAt, _ = ParseTime(updatedAt)
 
+	if currentLocation != nil {
+		item.CurrentLocation = *currentLocation
+	}
+	if archiveLocation != nil {
+		item.ArchiveLocation = *archiveLocation
+	}
+
 	if err := json.Unmarshal([]byte(custodyJSON), &item.CustodyLog); err != nil {
 		item.CustodyLog = []models.CustodyEntry{}
 	}
 
 	return &item, nil
+}
+
+// nullableString converts an empty Go string to nil so SQLite stores NULL,
+// and passes non-empty strings through as-is.
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }

@@ -31,18 +31,20 @@ type CustodyEntry struct {
 }
 
 type EvidenceItem struct {
-	EvidenceItemID string           `json:"evidence_item_id"`
-	CaseID         string           `json:"case_id"`
-	Name           string           `json:"name"`
-	Description    string           `json:"description"`
-	EvidenceType   EvidenceType     `json:"evidence_type"`
-	Status         EvidenceStatus   `json:"status"`
-	ContentHash    string           `json:"content_hash"`
-	CustodyLog     []CustodyEntry   `json:"custody_log"`
-	CollectedBy    string           `json:"collected_by"`
-	CollectedAt    time.Time        `json:"collected_at"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
-	Tags           []Tag            `json:"tags,omitempty"`
-	ItemNumber     string           `json:"item_number"`
+	EvidenceItemID  string           `json:"evidence_item_id"`
+	CaseID          string           `json:"case_id"`
+	Name            string           `json:"name"`
+	Description     string           `json:"description"`
+	EvidenceType    EvidenceType     `json:"evidence_type"`
+	Status          EvidenceStatus   `json:"status"`
+	ContentHash     string           `json:"content_hash"`
+	CustodyLog      []CustodyEntry   `json:"custody_log"`
+	CollectedBy     string           `json:"collected_by"`
+	CollectedAt     time.Time        `json:"collected_at"`
+	CreatedAt       time.Time        `json:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at"`
+	Tags            []Tag            `json:"tags,omitempty"`
+	ItemNumber      string           `json:"item_number"`
+	CurrentLocation string           `json:"current_location"`
+	ArchiveLocation string           `json:"archive_location"`
 }

@@ -137,6 +137,33 @@ const helpSections: HelpSection[] = [
                     the authenticated user. Manual custody entries can also be added at any time from the
                     evidence item detail view.
                 </p>
+                <h3>Location Tracking</h3>
+                <p>
+                    Each evidence item has two location fields, both free text with no format constraints.
+                </p>
+                <ul>
+                    <li>
+                        <strong>Current Location</strong> -- where the evidence physically is right now
+                        (for example, "Evidence locker B-12" or "Examiner workstation 3"). This field can
+                        be set at item creation or edited at any time from the detail view. Every change
+                        is automatically logged to the chain of custody with the old and new values. The
+                        log entry reads "Location recorded: [value]" for a first entry, "Location updated:
+                        [old] to [new]" when changed, or "Location cleared" when the field is cleared.
+                    </li>
+                    <li>
+                        <strong>Archive Location</strong> -- the final disposition record for the item
+                        after the case closes (for example, "Archive room A, box 7" or a network path
+                        to long-term storage). When an item's status is set to <strong>Archived</strong>,
+                        a prompt appears asking you to record the archive location. Click{' '}
+                        <strong>Set Archive Location</strong> to save, or <strong>Set Later</strong> to
+                        dismiss without saving. If you choose Set Later (or if you archive an item without
+                        filling in the field), an amber <strong>Archive location not recorded</strong>{' '}
+                        badge appears in the detail view header and a small amber indicator appears on the
+                        evidence list row. The badge clears immediately once the archive location is
+                        filled in, whether via the prompt or by editing the field directly in the detail
+                        view. Archive location changes do not generate custody log entries.
+                    </li>
+                </ul>
                 <h3>Evidence Tabs</h3>
                 <p>
                     Each registered evidence item gets its own tab in the case tab bar (E001, E002, and so on,
@@ -498,7 +525,9 @@ const helpSections: HelpSection[] = [
                     <li><code>case_metadata.json</code> -- case metadata in plaintext JSON</li>
                     <li><code>[CASENUMBER].db</code> -- the encrypted case database</li>
                     <li><code>master_notes/</code> -- one markdown file per committed block from Master Notes</li>
-                    <li><code>evidence/[ITEM]/</code> -- metadata and block files for each evidence item</li>
+                    <li><code>evidence/[ITEM]/</code> -- metadata and block files for each evidence item.
+                        The metadata.json for each item includes <code>current_location</code> and{' '}
+                        <code>archive_location</code> fields.</li>
                     <li><code>ioc_summary.json</code> -- all IOCs with raw and defanged values</li>
                     <li><code>timeline.json</code> -- all timeline entries</li>
                     <li><code>tasks.json</code> -- all tasks with status and linked block references</li>
@@ -517,6 +546,17 @@ const helpSections: HelpSection[] = [
                 <p>Install on Linux: <code>sudo apt install p7zip-full</code></p>
                 <p>Extract command:</p>
                 <p><code>7z x -p[password] archive.7z -o./output_dir/</code></p>
+                <h3>PDF Export</h3>
+                <p>
+                    Use File &gt; Export PDF to generate a full case report as a PDF document. The PDF
+                    includes all sections of the case: cover page, case facts, master notes, evidence
+                    items, IOC summary, timeline, task list, and chain verification. Each evidence item
+                    section includes Current Location and Archive Location rows when those fields are set.
+                    Items with no location fields set show no blank rows for those fields.
+                </p>
+                <p>
+                    A SHA-256 sidecar file is written alongside the PDF for integrity verification.
+                </p>
             </div>
         ),
     },

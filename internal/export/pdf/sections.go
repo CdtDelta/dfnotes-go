@@ -18,22 +18,22 @@ import (
 func sectionHeading(p *fpdf.Fpdf, title string, level int) int {
 	link := p.AddLink()
 	p.SetLink(link, -1, -1)
-	p.SetFont("Helvetica", "B", fontSizeH1)
+	p.SetFont("DejaVu", "", fontSizeH1)
 	p.SetTextColor(30, 30, 30)
 	p.Bookmark(title, level, -1)
 	p.MultiCell(bodyWidth, lineHeight+2, title, "", "L", false)
 	p.Ln(4)
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(30, 30, 30)
 	return link
 }
 
 func subHeading(p *fpdf.Fpdf, title string) {
-	p.SetFont("Helvetica", "B", fontSizeH2)
+	p.SetFont("DejaVu", "", fontSizeH2)
 	p.SetTextColor(30, 30, 30)
 	p.MultiCell(bodyWidth, lineHeight, title, "", "L", false)
 	p.Ln(3)
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(30, 30, 30)
 }
 
@@ -47,11 +47,11 @@ func separator(p *fpdf.Fpdf) {
 
 // renderLabelValue renders a single label/value row with bold label and plain value.
 func renderLabelValue(p *fpdf.Fpdf, label, value string, labelW float64) {
-	p.SetFont("Helvetica", "B", fontSizeSm)
+	p.SetFont("DejaVu", "", fontSizeSm)
 	p.SetTextColor(30, 30, 30)
 	p.SetX(marginLeft)
 	p.Cell(labelW, lineHeight, label)
-	p.SetFont("Helvetica", "", fontSizeSm)
+	p.SetFont("DejaVu", "", fontSizeSm)
 	p.SetTextColor(30, 30, 30)
 	p.Cell(bodyWidth-labelW, lineHeight, value)
 	p.Ln(-1)
@@ -65,13 +65,13 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 	// Large classification banner
 	p.SetFillColor(cc.BgR, cc.BgG, cc.BgB)
 	p.SetTextColor(cc.TextR, cc.TextG, cc.TextB)
-	p.SetFont("Helvetica", "B", 20)
+	p.SetFont("DejaVu", "", 20)
 	p.SetXY(0, 50)
 	p.CellFormat(pageWidth, 18, req.CaseData.Classification, "", 1, "C", true, 0, "")
 	p.Ln(12)
 
 	// Case number and title
-	p.SetFont("Helvetica", "B", 18)
+	p.SetFont("DejaVu", "", 18)
 	p.SetTextColor(30, 30, 30)
 	p.SetX(marginLeft)
 	p.MultiCell(bodyWidth, 12, req.CaseData.CaseNumber+": "+req.CaseData.Title, "", "C", false)
@@ -94,9 +94,9 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 	p.SetTextColor(30, 30, 30)
 	for _, row := range metaRows {
 		p.SetX(marginLeft + 20)
-		p.SetFont("Helvetica", "B", fontSizeBody+1)
+		p.SetFont("DejaVu", "", fontSizeBody+1)
 		p.Cell(50, lineHeight+1, row[0])
-		p.SetFont("Helvetica", "", fontSizeBody+1)
+		p.SetFont("DejaVu", "", fontSizeBody+1)
 		p.Cell(0, lineHeight+1, row[1])
 		p.Ln(-1)
 	}
@@ -104,7 +104,7 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 	p.Ln(20)
 
 	// SHA-256 note
-	p.SetFont("Helvetica", "I", fontSizeSm)
+	p.SetFont("DejaVu", "", fontSizeSm)
 	p.SetTextColor(80, 80, 80)
 	p.SetX(marginLeft)
 	p.MultiCell(bodyWidth, lineHeight, "SHA-256 of this file is recorded in the accompanying .sha256 sidecar file.", "", "C", false)
@@ -114,7 +114,7 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 func BuildTOCPlaceholder(p *fpdf.Fpdf) (int, float64) {
 	p.AddPage()
 	page := p.PageNo()
-	p.SetFont("Helvetica", "B", fontSizeH1)
+	p.SetFont("DejaVu", "", fontSizeH1)
 	p.SetTextColor(30, 30, 30)
 	p.Bookmark("Table of Contents", 0, -1)
 	p.MultiCell(bodyWidth, lineHeight+2, "Table of Contents", "", "L", false)
@@ -127,7 +127,7 @@ func BuildTOCPlaceholder(p *fpdf.Fpdf) (int, float64) {
 func FillTOC(p *fpdf.Fpdf, tocPage int, tocY float64, entries []TOCEntry, lastPage int) {
 	p.SetPage(tocPage)
 	p.SetXY(marginLeft, tocY)
-	p.SetFont("Helvetica", "", fontSizeBody+1)
+	p.SetFont("DejaVu", "", fontSizeBody+1)
 	for _, e := range entries {
 		p.SetTextColor(30, 30, 30)
 		title := e.Name
@@ -143,7 +143,7 @@ func FillTOC(p *fpdf.Fpdf, tocPage int, tocY float64, entries []TOCEntry, lastPa
 			}
 		}
 		p.SetX(marginLeft)
-		p.SetFont("Helvetica", "", fontSizeBody+1)
+		p.SetFont("DejaVu", "", fontSizeBody+1)
 		p.Cell(p.GetStringWidth(title)+2, lineHeight, title)
 		p.SetTextColor(120, 120, 120)
 		p.Cell(p.GetStringWidth(dots)+2, lineHeight, dots)
@@ -168,7 +168,7 @@ func BuildCaseFactsSection(p *fpdf.Fpdf, facts []models.CaseFact, evidenceItems 
 	link := sectionHeading(p, "Case Facts", 0)
 
 	if len(facts) == 0 {
-		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "No case facts recorded.")
 		p.Ln(-1)
@@ -256,11 +256,11 @@ func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockM
 	renderLabelValue(p, "Committed:", block.CreatedAt, labelW)
 
 	// Full verification hash in Courier 8pt; no truncation
-	p.SetFont("Helvetica", "B", fontSizeSm)
+	p.SetFont("DejaVu", "", fontSizeSm)
 	p.SetTextColor(30, 30, 30)
 	p.SetX(marginLeft)
 	p.Cell(labelW, lineHeight, "Verification Hash:")
-	p.SetFont("Courier", "", 8)
+	p.SetFont("DejaVu", "", 8)
 	p.SetTextColor(30, 30, 30)
 	p.MultiCell(bodyWidth-labelW, lineHeight, block.ContentHash, "", "L", false)
 
@@ -271,7 +271,7 @@ func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockM
 		verifyLabel = "TAMPERED"
 		vR, vG, vB = 180, 0, 0
 	}
-	p.SetFont("Helvetica", "B", fontSizeSm)
+	p.SetFont("DejaVu", "", fontSizeSm)
 	p.SetTextColor(30, 30, 30)
 	p.SetX(marginLeft)
 	p.Cell(labelW, lineHeight, "Verification:")
@@ -281,16 +281,16 @@ func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockM
 
 	// Amendment info
 	if raw, ok := rawBlockMap[block.BlockID]; ok && raw.AmendsBlockID != nil {
-		p.SetFont("Helvetica", "B", fontSizeSm)
+		p.SetFont("DejaVu", "", fontSizeSm)
 		p.SetTextColor(30, 30, 30)
 		p.SetX(marginLeft)
 		p.Cell(labelW, lineHeight, "AMENDMENT:")
-		p.SetFont("Helvetica", "", fontSizeSm)
+		p.SetFont("DejaVu", "", fontSizeSm)
 		p.Cell(bodyWidth-labelW, lineHeight, "Amends block: "+*raw.AmendsBlockID)
 		p.Ln(-1)
 	}
 
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(30, 30, 30)
 	p.Ln(2)
 }
@@ -314,6 +314,12 @@ func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceRespons
 			{"Current Status:", item.Status},
 			{"Created At:", item.CreatedAt},
 		}
+		if item.CurrentLocation != "" {
+			metaRows = append(metaRows, []string{"Current Location:", item.CurrentLocation})
+		}
+		if item.ArchiveLocation != "" {
+			metaRows = append(metaRows, []string{"Archive Location:", item.ArchiveLocation})
+		}
 		for _, row := range metaRows {
 			renderLabelValue(p, row[0], row[1], labelW)
 		}
@@ -321,7 +327,7 @@ func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceRespons
 
 		// Custody log
 		if len(item.CustodyLog) > 0 {
-			p.SetFont("Helvetica", "B", fontSizeBody)
+			p.SetFont("DejaVu", "", fontSizeBody)
 			p.SetTextColor(30, 30, 30)
 			p.Cell(0, lineHeight, "Chain of Custody")
 			p.Ln(-1)
@@ -341,7 +347,7 @@ func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceRespons
 		// Note blocks
 		blocks := evidenceBlockMap[item.EvidenceItemID]
 		if len(blocks) > 0 {
-			p.SetFont("Helvetica", "B", fontSizeBody)
+			p.SetFont("DejaVu", "", fontSizeBody)
 			p.SetTextColor(30, 30, 30)
 			p.Cell(0, lineHeight, "Note Blocks")
 			p.Ln(-1)
@@ -375,7 +381,7 @@ func BuildIOCSection(p *fpdf.Fpdf, iocEntries []ioc.IOCEntry) (int, int) {
 
 	subHeading(p, "Confirmed and Detected IOCs")
 	if len(confirmed) == 0 {
-		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "No confirmed or detected IOCs.")
 		p.Ln(-1)
@@ -392,7 +398,7 @@ func BuildIOCSection(p *fpdf.Fpdf, iocEntries []ioc.IOCEntry) (int, int) {
 
 	subHeading(p, "Dismissed (False Positives)")
 	if len(dismissed) == 0 {
-		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "No dismissed IOCs.")
 		p.Ln(-1)
@@ -446,7 +452,7 @@ func BuildTimelineSection(p *fpdf.Fpdf, entries []models.TimelineEntry, evidence
 	link := sectionHeading(p, "Timeline", 0)
 
 	if len(entries) == 0 {
-		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "No timeline entries.")
 		p.Ln(-1)
@@ -478,19 +484,19 @@ func BuildTimelineSection(p *fpdf.Fpdf, entries []models.TimelineEntry, evidence
 		}
 
 		// Line 1: Timestamp (bold) -- Source
-		p.SetFont("Helvetica", "B", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(30, 30, 30)
 		p.SetX(marginLeft)
 		tsW := p.GetStringWidth(e.Timestamp) + 4
 		p.Cell(tsW, lineHeight, e.Timestamp)
-		p.SetFont("Helvetica", "", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "-- "+source)
 		p.Ln(-1)
 
 		// Line 2: Secondary TZ if present
 		if tzDisplay != "" {
-			p.SetFont("Helvetica", "I", 9)
+			p.SetFont("DejaVu", "", 9)
 			p.SetTextColor(80, 80, 80)
 			p.SetX(marginLeft)
 			p.Cell(0, lineHeight, tzDisplay)
@@ -498,18 +504,18 @@ func BuildTimelineSection(p *fpdf.Fpdf, entries []models.TimelineEntry, evidence
 		}
 
 		// Event description
-		p.SetFont("Helvetica", "", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(30, 30, 30)
 		p.SetX(marginLeft)
 		p.MultiCell(bodyWidth, lineHeight, e.EventDescription, "", "L", false)
 
 		// Investigator notes if present
 		if e.InvestigatorNotes != "" {
-			p.SetFont("Helvetica", "B", fontSizeSm)
+			p.SetFont("DejaVu", "", fontSizeSm)
 			p.SetTextColor(30, 30, 30)
 			p.SetX(marginLeft + 5)
 			p.Cell(20, lineHeight, "Notes:")
-			p.SetFont("Helvetica", "", fontSizeSm)
+			p.SetFont("DejaVu", "", fontSizeSm)
 			p.SetTextColor(30, 30, 30)
 			p.MultiCell(bodyWidth-25, lineHeight, e.InvestigatorNotes, "", "L", false)
 		}
@@ -535,7 +541,7 @@ func BuildTaskListSection(p *fpdf.Fpdf, tasks []models.Task, evidenceItems []ser
 	link := sectionHeading(p, "Task List", 0)
 
 	if len(tasks) == 0 {
-		p.SetFont("Helvetica", "I", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetTextColor(80, 80, 80)
 		p.Cell(0, lineHeight, "No tasks.")
 		p.Ln(-1)
@@ -614,52 +620,52 @@ func BuildTaskListSection(p *fpdf.Fpdf, tasks []models.Task, evidenceItems []ser
 			}
 
 			// Task: label (bold 10pt) + title (normal 10pt) on same line
-			p.SetFont("Helvetica", "B", fontSizeBody)
+			p.SetFont("DejaVu", "", fontSizeBody)
 			p.SetTextColor(30, 30, 30)
 			p.SetX(marginLeft)
 			p.Cell(taskLabelW, lineHeight, "Task:")
-			p.SetFont("Helvetica", "", fontSizeBody)
+			p.SetFont("DejaVu", "", fontSizeBody)
 			p.MultiCell(bodyWidth-taskLabelW, lineHeight, t.Title, "", "L", false)
 
 			// Status: always shown (bold 9pt label + normal 9pt value)
-			p.SetFont("Helvetica", "B", 9)
+			p.SetFont("DejaVu", "", 9)
 			p.SetTextColor(30, 30, 30)
 			p.SetX(marginLeft)
 			p.Cell(taskLabelW, lineHeight, "Status:")
-			p.SetFont("Helvetica", "", 9)
+			p.SetFont("DejaVu", "", 9)
 			p.Cell(0, lineHeight, string(t.Status))
 			p.Ln(-1)
 
 			// Description: omit row if empty
 			if t.Description != "" {
-				p.SetFont("Helvetica", "B", 9)
+				p.SetFont("DejaVu", "", 9)
 				p.SetTextColor(30, 30, 30)
 				p.SetX(marginLeft)
 				p.Cell(taskLabelW, lineHeight, "Description:")
-				p.SetFont("Helvetica", "", 9)
+				p.SetFont("DejaVu", "", 9)
 				p.MultiCell(bodyWidth-taskLabelW, lineHeight, t.Description, "", "L", false)
 			}
 
 			// Completed: show only when status is Complete
 			if t.CompletedAt != nil && *t.CompletedAt != "" {
-				p.SetFont("Helvetica", "B", 9)
+				p.SetFont("DejaVu", "", 9)
 				p.SetTextColor(30, 30, 30)
 				p.SetX(marginLeft)
 				p.Cell(taskLabelW, lineHeight, "Completed:")
-				p.SetFont("Helvetica", "", 9)
+				p.SetFont("DejaVu", "", 9)
 				p.Cell(0, lineHeight, *t.CompletedAt)
 				p.Ln(-1)
 			}
 
 			// Linked blocks if present
 			if len(t.LinkedBlocks) > 0 {
-				p.SetFont("Helvetica", "B", 9)
+				p.SetFont("DejaVu", "", 9)
 				p.SetTextColor(30, 30, 30)
 				p.SetX(marginLeft)
 				p.Cell(taskLabelW, lineHeight, "Linked blocks:")
 				p.Ln(-1)
 				for _, lb := range t.LinkedBlocks {
-					p.SetFont("Courier", "", 8)
+					p.SetFont("DejaVu", "", 8)
 					p.SetTextColor(30, 30, 30)
 					p.SetX(marginLeft + 5)
 					p.Cell(0, lineHeight, "Committed "+lb.CommittedAt+" -- Block "+lb.BlockID)
@@ -680,7 +686,7 @@ func BuildChainVerificationSection(p *fpdf.Fpdf, rawBlocks []models.NoteBlock) (
 
 	// Explanatory paragraph
 	const chainExplanation = "The chain verification section confirms the integrity of every committed note block in this case. Each block is cryptographically linked to the preceding block via SHA-256 hashing and digitally signed with the examiner's Ed25519 keypair. A failed signature or broken chain link indicates that one or more blocks were modified after commitment and the record should be considered suspect."
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(60, 60, 60)
 	p.SetX(marginLeft)
 	p.MultiCell(bodyWidth, lineHeight, chainExplanation, "", "L", false)
@@ -729,7 +735,7 @@ func BuildChainVerificationSection(p *fpdf.Fpdf, rawBlocks []models.NoteBlock) (
 	}
 
 	// Summary line
-	p.SetFont("Helvetica", "B", fontSizeBody+1)
+	p.SetFont("DejaVu", "", fontSizeBody+1)
 	if failCount == 0 {
 		p.SetTextColor(0, 140, 0)
 		p.Cell(0, lineHeight+2, "Chain intact: YES")
@@ -739,7 +745,7 @@ func BuildChainVerificationSection(p *fpdf.Fpdf, rawBlocks []models.NoteBlock) (
 	}
 	p.Ln(-1)
 	p.Ln(4)
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(30, 30, 30)
 
 	// Build table rows + cell styles for red cells
@@ -808,7 +814,7 @@ func BuildAppendixImages(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, atta
 		info := attachments[img.attachID]
 		label := fmt.Sprintf("Image %d from Block %s -- committed %s", idx+1, img.blockID, img.committed)
 
-		p.SetFont("Helvetica", "B", fontSizeSm)
+		p.SetFont("DejaVu", "", fontSizeSm)
 		p.SetTextColor(30, 30, 30)
 		p.SetX(marginLeft)
 		p.MultiCell(bodyWidth, lineHeight, label, "", "L", false)
@@ -816,7 +822,7 @@ func BuildAppendixImages(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, atta
 
 		imgType := contentTypeToFPDF(info.ContentType)
 		if imgType == "" {
-			p.SetFont("Helvetica", "I", fontSizeSm)
+			p.SetFont("DejaVu", "", fontSizeSm)
 			p.SetTextColor(180, 0, 0)
 			p.Cell(0, lineHeight, "[Unsupported image format: "+info.ContentType+"]")
 			p.Ln(-1)
@@ -829,7 +835,7 @@ func BuildAppendixImages(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, atta
 		p.RegisterImageOptionsReader(imgName, opts, newBytesReader(info.Data))
 		imgInfo := p.GetImageInfo(imgName)
 		if imgInfo == nil {
-			p.SetFont("Helvetica", "I", fontSizeSm)
+			p.SetFont("DejaVu", "", fontSizeSm)
 			p.SetTextColor(180, 0, 0)
 			p.Cell(0, lineHeight, "[Could not load image]")
 			p.Ln(-1)

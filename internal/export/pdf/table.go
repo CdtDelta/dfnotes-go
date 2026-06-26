@@ -18,7 +18,7 @@ func DrawTable(p *fpdf.Fpdf, headers []string, widths []float64, rows [][]string
 		return
 	}
 	drawHeader := func() {
-		p.SetFont("Helvetica", "B", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetFillColor(220, 220, 220)
 		p.SetTextColor(30, 30, 30)
 		p.SetDrawColor(180, 180, 180)
@@ -28,7 +28,7 @@ func DrawTable(p *fpdf.Fpdf, headers []string, widths []float64, rows [][]string
 			p.CellFormat(w, lineHeight, h, "1", 0, "L", true, 0, "")
 		}
 		p.Ln(-1)
-		p.SetFont("Helvetica", "", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 	}
 
 	drawHeader()
@@ -91,7 +91,7 @@ func DrawTableBorderless(p *fpdf.Fpdf, headers []string, widths []float64, rows 
 		return
 	}
 	drawHeader := func() {
-		p.SetFont("Helvetica", "B", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 		p.SetFillColor(220, 220, 220)
 		p.SetTextColor(30, 30, 30)
 		for i, h := range headers {
@@ -103,7 +103,7 @@ func DrawTableBorderless(p *fpdf.Fpdf, headers []string, widths []float64, rows 
 		p.SetDrawColor(30, 30, 30)
 		p.SetLineWidth(0.5)
 		p.Line(marginLeft, y, marginLeft+bodyWidth, y)
-		p.SetFont("Helvetica", "", fontSizeBody)
+		p.SetFont("DejaVu", "", fontSizeBody)
 	}
 
 	drawHeader()
@@ -164,7 +164,7 @@ func DrawTableMonospace(p *fpdf.Fpdf, headers []string, widths []float64, rows [
 		return
 	}
 	drawHeader := func() {
-		p.SetFont("Helvetica", "B", 8)
+		p.SetFont("DejaVu", "", 8)
 		p.SetFillColor(220, 220, 220)
 		p.SetTextColor(30, 30, 30)
 		for i, h := range headers {
@@ -182,7 +182,7 @@ func DrawTableMonospace(p *fpdf.Fpdf, headers []string, widths []float64, rows [
 
 	for rowIdx, row := range rows {
 		// Measure row height using Courier 8pt so wrapping estimates are accurate.
-		p.SetFont("Courier", "", 8)
+		p.SetFont("DejaVu", "", 8)
 		rowH := lineHeight
 		for i, cell := range row {
 			if i >= len(widths) {
@@ -207,7 +207,7 @@ func DrawTableMonospace(p *fpdf.Fpdf, headers []string, widths []float64, rows [
 			p.SetFillColor(245, 245, 245)
 		}
 
-		p.SetFont("Courier", "", 8)
+		p.SetFont("DejaVu", "", 8)
 		for colIdx, cell := range row {
 			if colIdx >= len(widths) {
 				break
@@ -228,7 +228,7 @@ func DrawTableMonospace(p *fpdf.Fpdf, headers []string, widths []float64, rows [
 
 	p.SetTextColor(30, 30, 30)
 	p.SetFillColor(255, 255, 255)
-	p.SetFont("Helvetica", "", fontSizeBody)
+	p.SetFont("DejaVu", "", fontSizeBody)
 	p.Ln(4)
 }
 

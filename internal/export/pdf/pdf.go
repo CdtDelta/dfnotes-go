@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	_ "embed"
+
 	"bytes"
 	"fmt"
 	"time"
@@ -11,6 +13,9 @@ import (
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 )
+
+//go:embed fonts/DejaVuSans.ttf
+var dejaVuSansBytes []byte
 
 // AttachmentInfo holds decrypted image data for PDF embedding.
 type AttachmentInfo struct {
@@ -46,6 +51,11 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 	}
 
 	p := fpdf.New("P", "mm", "A4", "")
+	// Bold ("B") and italic ("I") style variants are intentionally dropped; only
+	// the regular weight is embedded at this stage.
+	// TODO: embed DejaVuSans-Bold.ttf for bold support
+	// TODO: embed DejaVuSans-Oblique.ttf for italic support
+	p.AddUTF8FontFromBytes("DejaVu", "", dejaVuSansBytes)
 	p.AliasNbPages("{nb}")
 	p.SetMargins(marginLeft, marginTop, marginRight)
 	p.SetAutoPageBreak(true, marginBottom)
@@ -55,7 +65,7 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 
 	// Header: full-width colored bar with classification text
 	p.SetHeaderFunc(func() {
-		p.SetFont("Helvetica", "B", 12)
+		p.SetFont("DejaVu", "", 12)
 		p.SetFillColor(cc.BgR, cc.BgG, cc.BgB)
 		p.SetTextColor(cc.TextR, cc.TextG, cc.TextB)
 		p.SetXY(0, 5)
@@ -65,7 +75,7 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 	// Footer: classification left | case number center | page N of M right
 	p.SetFooterFunc(func() {
 		p.SetY(-12)
-		p.SetFont("Helvetica", "", fontSizeSm)
+		p.SetFont("DejaVu", "", fontSizeSm)
 		p.SetTextColor(180, 180, 180)
 		p.CellFormat(bodyWidth/3, lineHeight, req.CaseData.Classification, "", 0, "L", false, 0, "")
 		p.CellFormat(bodyWidth/3, lineHeight, "Case: "+caseNum, "", 0, "C", false, 0, "")

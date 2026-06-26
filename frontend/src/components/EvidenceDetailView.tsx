@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { UpdateEvidenceStatus, AddCustodyEntry, TagEvidence, UntagEvidence } from '../../wailsjs/go/main/App';
+import { useState, useRef } from 'react';
+import {
+    UpdateEvidenceStatus, AddCustodyEntry, TagEvidence, UntagEvidence,
+    UpdateEvidenceCurrentLocation, UpdateEvidenceArchiveLocation,
+} from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
 import TagBadge from './TagBadge';
 import TagSelector from './TagSelector';
@@ -30,6 +33,8 @@ const STATUS_COLORS: Record<string, string> = {
     WITHDRAWN: 'bg-red-900/50 text-red-400 border-red-700',
 };
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export default function EvidenceDetailView({ item, onBack, onUpdated }: EvidenceDetailViewProps) {
     const [newStatus, setNewStatus] = useState(item.status);
     const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -38,7 +43,26 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
     const [addingEntry, setAddingEntry] = useState(false);
     const [error, setError] = useState('');
 
+    // Location state -- local values track what the user types; refs track last-saved values
+    const [currentLocation, setCurrentLocation] = useState(item.current_location || '');
+    const prevCurrentLocation = useRef(item.current_location || '');
+    const [currentLocStatus, setCurrentLocStatus] = useState<SaveStatus>('idle');
+    const [currentLocError, setCurrentLocError] = useState('');
+
+    const [archiveLocation, setArchiveLocation] = useState(item.archive_location || '');
+    const prevArchiveLocation = useRef(item.archive_location || '');
+    const [archiveLocStatus, setArchiveLocStatus] = useState<SaveStatus>('idle');
+    const [archiveLocError, setArchiveLocError] = useState('');
+
+    // Archive location modal
+    const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+    const [archiveModalInput, setArchiveModalInput] = useState('');
+    const [archiveModalSaving, setArchiveModalSaving] = useState(false);
+    const [archiveModalError, setArchiveModalError] = useState('');
+
     const isWithdrawn = item.status === 'WITHDRAWN';
+    const isArchived = item.status === 'ARCHIVED';
+    const missingArchiveLocation = isArchived && !archiveLocation;
     const typeColor = TYPE_COLORS[item.evidence_type] || TYPE_COLORS.OTHER;
     const statusColor = STATUS_COLORS[item.status] || STATUS_COLORS.COLLECTED;
     const tags = item.tags || [];
@@ -53,10 +77,86 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
                 status: newStatus,
             } as services.UpdateEvidenceStatusRequest);
             onUpdated(updated);
+            if (newStatus === 'ARCHIVED') {
+                setArchiveModalInput(archiveLocation);
+                setArchiveModalError('');
+                setArchiveModalOpen(true);
+            }
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
             setUpdatingStatus(false);
+        }
+    };
+
+    const handleCurrentLocationSave = async () => {
+        const trimmed = currentLocation.trim();
+        if (trimmed === prevCurrentLocation.current) return;
+        setCurrentLocStatus('saving');
+        setCurrentLocError('');
+        try {
+            await UpdateEvidenceCurrentLocation(item.evidence_item_id, prevCurrentLocation.current, trimmed);
+            prevCurrentLocation.current = trimmed;
+            setCurrentLocation(trimmed);
+            setCurrentLocStatus('saved');
+            setTimeout(() => setCurrentLocStatus('idle'), 2000);
+        } catch (err: unknown) {
+            setCurrentLocError(err instanceof Error ? err.message : String(err));
+            setCurrentLocation(prevCurrentLocation.current);
+            setCurrentLocStatus('error');
+        }
+    };
+
+    const handleCurrentLocationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); }
+        if (e.key === 'Escape') {
+            setCurrentLocation(prevCurrentLocation.current);
+            setCurrentLocStatus('idle');
+            setCurrentLocError('');
+            e.currentTarget.blur();
+        }
+    };
+
+    const handleArchiveLocationSave = async () => {
+        const trimmed = archiveLocation.trim();
+        if (trimmed === prevArchiveLocation.current) return;
+        setArchiveLocStatus('saving');
+        setArchiveLocError('');
+        try {
+            await UpdateEvidenceArchiveLocation(item.evidence_item_id, trimmed);
+            prevArchiveLocation.current = trimmed;
+            setArchiveLocation(trimmed);
+            setArchiveLocStatus('saved');
+            setTimeout(() => setArchiveLocStatus('idle'), 2000);
+        } catch (err: unknown) {
+            setArchiveLocError(err instanceof Error ? err.message : String(err));
+            setArchiveLocation(prevArchiveLocation.current);
+            setArchiveLocStatus('error');
+        }
+    };
+
+    const handleArchiveLocationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); }
+        if (e.key === 'Escape') {
+            setArchiveLocation(prevArchiveLocation.current);
+            setArchiveLocStatus('idle');
+            setArchiveLocError('');
+            e.currentTarget.blur();
+        }
+    };
+
+    const handleArchiveModalSave = async () => {
+        setArchiveModalSaving(true);
+        setArchiveModalError('');
+        try {
+            await UpdateEvidenceArchiveLocation(item.evidence_item_id, archiveModalInput.trim());
+            prevArchiveLocation.current = archiveModalInput.trim();
+            setArchiveLocation(archiveModalInput.trim());
+            setArchiveModalOpen(false);
+        } catch (err: unknown) {
+            setArchiveModalError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setArchiveModalSaving(false);
         }
     };
 
@@ -83,7 +183,6 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
     const handleTag = async (tagId: string) => {
         try {
             await TagEvidence({ evidence_item_id: item.evidence_item_id, tag_id: tagId } as services.TagEvidenceRequest);
-            // Update tags in place
             const newTag = { tag_id: tagId, name: '', color: '' };
             onUpdated({ ...item, tags: [...tags, newTag] });
         } catch { /* ignore */ }
@@ -95,6 +194,8 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
             onUpdated({ ...item, tags: tags.filter((t) => t.tag_id !== tagId) });
         } catch { /* ignore */ }
     };
+
+    const inputClass = 'w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-gray-100 text-sm focus:outline-none focus:border-blue-500 placeholder-gray-600';
 
     return (
         <div className="space-y-6">
@@ -113,7 +214,17 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
 
             {/* Metadata */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-100 mb-4">{item.name}</h3>
+                <div className="flex items-start justify-between mb-4 gap-3">
+                    <h3 className="text-lg font-semibold text-gray-100">{item.name}</h3>
+                    {missingArchiveLocation && (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-amber-800 text-amber-200">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                            </svg>
+                            Archive location not recorded
+                        </span>
+                    )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
                         <span className="text-gray-400">Type</span>
@@ -204,6 +315,57 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
                 )}
             </div>
 
+            {/* Location */}
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-3">Location</h4>
+                <div className="space-y-4">
+                    {/* Current Location */}
+                    <div>
+                        <label className="block text-xs text-gray-400 mb-1">Current Location</label>
+                        <input
+                            type="text"
+                            value={currentLocation}
+                            onChange={(e) => { setCurrentLocation(e.target.value); setCurrentLocStatus('idle'); setCurrentLocError(''); }}
+                            onBlur={handleCurrentLocationSave}
+                            onKeyDown={handleCurrentLocationKeyDown}
+                            placeholder="e.g., Evidence locker B-12, Examiner workstation 3"
+                            className={inputClass}
+                        />
+                        {currentLocStatus === 'saving' && (
+                            <p className="text-xs text-gray-500 mt-1">Saving...</p>
+                        )}
+                        {currentLocStatus === 'saved' && (
+                            <p className="text-xs text-green-400 mt-1">Saved</p>
+                        )}
+                        {currentLocStatus === 'error' && currentLocError && (
+                            <p className="text-xs text-red-400 mt-1">{currentLocError}</p>
+                        )}
+                    </div>
+                    {/* Archive Location */}
+                    <div>
+                        <label className="block text-xs text-gray-400 mb-1">Archive Location</label>
+                        <input
+                            type="text"
+                            value={archiveLocation}
+                            onChange={(e) => { setArchiveLocation(e.target.value); setArchiveLocStatus('idle'); setArchiveLocError(''); }}
+                            onBlur={handleArchiveLocationSave}
+                            onKeyDown={handleArchiveLocationKeyDown}
+                            placeholder="e.g., NAS //evidence-nas/2025/CASE-123, Archive room A box 7"
+                            className={inputClass}
+                        />
+                        {archiveLocStatus === 'saving' && (
+                            <p className="text-xs text-gray-500 mt-1">Saving...</p>
+                        )}
+                        {archiveLocStatus === 'saved' && (
+                            <p className="text-xs text-green-400 mt-1">Saved</p>
+                        )}
+                        {archiveLocStatus === 'error' && archiveLocError && (
+                            <p className="text-xs text-red-400 mt-1">{archiveLocError}</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+
             {/* Custody Chain */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-gray-300 mb-3">
@@ -268,6 +430,57 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
                     </div>
                 </div>
             </div>
+
+            {/* Archive Location Modal */}
+            {archiveModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-gray-200">
+                                {archiveModalInput ? 'Update Archive Location' : 'Evidence Archived -- Record Archive Location'}
+                            </h3>
+                            <button
+                                onClick={() => setArchiveModalOpen(false)}
+                                className="text-gray-500 hover:text-gray-300"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-gray-400 mb-1">Archive Location</label>
+                            <input
+                                type="text"
+                                value={archiveModalInput}
+                                onChange={(e) => setArchiveModalInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleArchiveModalSave(); if (e.key === 'Escape') setArchiveModalOpen(false); }}
+                                placeholder="e.g., NAS //evidence-nas/2025/CASE-123, Archive room A box 7"
+                                className="w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                                autoFocus
+                            />
+                        </div>
+                        {archiveModalError && (
+                            <p className="text-xs text-red-400">{archiveModalError}</p>
+                        )}
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleArchiveModalSave}
+                                disabled={archiveModalSaving}
+                                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
+                            >
+                                {archiveModalSaving ? 'Saving...' : 'Set Archive Location'}
+                            </button>
+                            <button
+                                onClick={() => setArchiveModalOpen(false)}
+                                className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
+                            >
+                                Set Later
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
