@@ -561,6 +561,78 @@ const helpSections: HelpSection[] = [
         ),
     },
     {
+        title: 'Chain Verification',
+        content: (
+            <div className="help-text">
+                <p>
+                    The Chain Verification tab (the last tab in the case tab bar) lets you verify the
+                    integrity of every committed block in the case on demand. It decrypts each block,
+                    recomputes its SHA-256 content hash, verifies the Ed25519 digital signature, and
+                    confirms that each block's chain link to its predecessor is intact.
+                </p>
+                <h3>Running Verification</h3>
+                <p>
+                    Click <strong>Run verification</strong>. The result is ephemeral -- it is not cached
+                    and runs fresh each time. A "Last run" timestamp is shown after the first run. Each
+                    run is logged as a VERIFY entry in the case audit trail.
+                </p>
+                <h3>Reading the Results</h3>
+                <p>
+                    A green banner means the chain is intact and every block verified. A red banner means
+                    at least one block failed, and shows the count and the sequence number of the first
+                    failure.
+                </p>
+                <p>
+                    The per-block table shows one row per committed block in chain order. Columns:
+                </p>
+                <ul>
+                    <li><strong>#</strong> -- position in the chain (1 = genesis)</li>
+                    <li><strong>Block ID</strong> -- truncated UUID of the block</li>
+                    <li><strong>Source</strong> -- "Master Notes" or the evidence item tab it belongs to</li>
+                    <li><strong>Committed</strong> -- commit timestamp in RFC3339 UTC</li>
+                    <li><strong>Hash</strong> -- PASS if the recomputed SHA-256 matches the stored hash; FAIL otherwise; n/a if decryption failed</li>
+                    <li><strong>Signature</strong> -- PASS if the Ed25519 signature over the canonical payload verifies; FAIL otherwise</li>
+                    <li><strong>Link</strong> -- n/a for the genesis block; OK if this block's previous-hash matches the preceding block's content hash; BROKEN otherwise</li>
+                    <li><strong>Result</strong> -- Verified, TAMPERED (with reason), or CHAIN BREAK (with detail)</li>
+                </ul>
+                <p>
+                    Click any row to navigate directly to that block's tab.
+                </p>
+                <h3>Verdict Meanings</h3>
+                <ul>
+                    <li>
+                        <strong>Verified</strong> -- all checks passed. The block's content is unchanged,
+                        its signature is valid, and its chain link is intact.
+                    </li>
+                    <li>
+                        <strong>TAMPERED</strong> -- at least one per-block check failed. The reason will
+                        be one of: decryption failed (ciphertext altered), content hash mismatch, or
+                        signature invalid (one of the four signed fields was altered after commit).
+                    </li>
+                    <li>
+                        <strong>CHAIN BREAK</strong> -- the block's own checks passed but its link to the
+                        preceding block is broken. This typically follows a TAMPERED block: the next block
+                        was committed pointing at the original hash, which no longer matches.
+                    </li>
+                </ul>
+                <h3>Export and Independent Verification</h3>
+                <p>
+                    The 7z case export includes <code>chain_verification.json</code>, which contains the
+                    per-block verification results plus all the raw fields needed for independent
+                    re-verification: content hash, previous-block hash, commit timestamp, block id, and
+                    the base64-encoded Ed25519 signature. The examiner public key is at the top level of
+                    the file as <code>examiner_public_key</code> (hex-encoded). A third party with the
+                    public key can rebuild the signing payload and verify each signature independently.
+                    See <code>VERIFICATION.md</code> in the repository root for the full procedure.
+                </p>
+                <p>
+                    The PDF export chain verification section renders the same results: the chain-intact
+                    summary line, the per-block table, and a findings list for any failures.
+                </p>
+            </div>
+        ),
+    },
+    {
         title: 'Settings',
         content: (
             <div className="help-text">

@@ -12,6 +12,7 @@ import IOCSummaryTab from '../components/IOCSummaryTab';
 import TimelineTab from '../components/TimelineTab';
 import TaskListTab from '../components/TaskListTab';
 import CaseFactsTab from '../components/CaseFactsTab';
+import ChainVerificationTab from '../components/ChainVerificationTab';
 import ErrorMessage from '../components/ErrorMessage';
 import ExportDialog from '../components/ExportDialog';
 import PasswordInput from '../components/PasswordInput';
@@ -208,6 +209,7 @@ export default function CaseDetailPage() {
         { id: 'timeline', label: 'Timeline' },
         { id: 'tasks', label: 'Tasks' },
         { id: 'evidence', label: 'Evidence' },
+        { id: 'verify', label: 'Chain Verification' },
     ];
 
     return (
@@ -369,6 +371,12 @@ export default function CaseDetailPage() {
                                 caseId={caseData.case_id}
                                 evidenceItems={evidenceItems}
                                 onNavigate={handleNavigate}
+                            />
+                        )}
+                        {activeTab === 'verify' && (
+                            <ChainVerificationTab
+                                caseId={caseData.case_id}
+                                onNavigateToBlock={handleNavigateToBlock}
                             />
                         )}
                         {activeTab === 'notes' && (

@@ -3,6 +3,7 @@ package export
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -19,9 +20,11 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/verify"
 )
 
-const appVersion = "0.4.0"
+// TODO: source this from the canonical AppVersion constant in main once the packages align.
+const appVersion = "0.10.0"
 
 var (
 	reSanitizeTS      = regexp.MustCompile(`[^a-zA-Z0-9]`)
@@ -37,6 +40,7 @@ type ExportRequest struct {
 	ArchivePath     string // absolute path chosen by the user
 	ExaminerName    string
 	ExaminerPubKey  []byte
+	Decrypt         func([]byte) ([]byte, error) // decrypts a block ciphertext with the active case key
 }
 
 type caseMetadata struct {
@@ -53,24 +57,30 @@ type caseMetadata struct {
 }
 
 type blockRecord struct {
-	BlockID         string `json:"block_id"`
-	Sequence        int    `json:"sequence"`
-	EvidenceItemID  any    `json:"evidence_item_id"`
-	CommittedAt     string `json:"committed_at"`
-	ContentHash     string `json:"content_hash"`
-	PrevBlockHash   string `json:"previous_block_hash"`
-	Signature       string `json:"signature"`
-	ChainValid      bool   `json:"chain_valid"`
+	BlockID        string `json:"block_id"`
+	Sequence       int    `json:"sequence"`
+	EvidenceItemID any    `json:"evidence_item_id"`
+	CommittedAt    string `json:"committed_at"`
+	ContentHash    string `json:"content_hash"`
+	PrevBlockHash  string `json:"previous_block_hash"`
+	Signature      string `json:"signature"` // base64-encoded raw Ed25519 signature
+	HashValid      bool   `json:"hash_valid"`
+	SignatureValid bool   `json:"signature_valid"`
+	LinkValid      bool   `json:"link_valid"`
+	Verdict        string `json:"verdict"`
+	Detail         string `json:"detail"`
 }
 
 type chainVerification struct {
-	CaseID             string        `json:"case_id"`
-	CaseNumber         string        `json:"case_number"`
-	ExportedAt         string        `json:"exported_at"`
-	ExaminerPublicKey  string        `json:"examiner_public_key"`
-	Blocks             []blockRecord `json:"blocks"`
-	ChainIntact        bool          `json:"chain_intact"`
-	TotalBlocks        int           `json:"total_blocks"`
+	CaseID            string        `json:"case_id"`
+	CaseNumber        string        `json:"case_number"`
+	ExportedAt        string        `json:"exported_at"`
+	ExaminerPublicKey string        `json:"examiner_public_key"`
+	Blocks            []blockRecord `json:"blocks"`
+	ChainIntact       bool          `json:"chain_intact"`
+	TotalBlocks       int           `json:"total_blocks"`
+	FailedBlocks      int           `json:"failed_blocks"`
+	FirstFailureSeq   int           `json:"first_failure_seq"`
 }
 
 type taskExport struct {
@@ -336,7 +346,7 @@ func ExportCase(
 
 	// --- chain_verification.json ---
 	progress("verifying chain", 75)
-	cv := buildChainVerification(caseData, rawBlocks, req.ExaminerPubKey)
+	cv := buildChainVerification(caseData, rawBlocks, ed25519.PublicKey(req.ExaminerPubKey), req.Decrypt)
 	if err := writeJSON(filepath.Join(tmpDir, "chain_verification.json"), cv); err != nil {
 		return "", err
 	}
@@ -400,43 +410,50 @@ examiner:            %s
 		block.ContentHash, block.PrevHash, block.AuthorID, block.Content)
 }
 
-func buildChainVerification(caseData *services.CaseResponse, rawBlocks []models.NoteBlock, pubKey []byte) chainVerification {
+func buildChainVerification(caseData *services.CaseResponse, rawBlocks []models.NoteBlock, pubKey ed25519.PublicKey, decrypt func([]byte) ([]byte, error)) chainVerification {
 	pubKeyHex := hex.EncodeToString(pubKey)
-	var records []blockRecord
-	allValid := true
-	for i, b := range rawBlocks {
-		prevHash := b.PrevHash
-		// Chain is intact if each block's prev_hash matches the previous block's content_hash.
-		valid := true
-		if i > 0 {
-			valid = rawBlocks[i-1].ContentHash == prevHash
-		}
-		if !valid {
-			allValid = false
-		}
+	res := verify.Chain(rawBlocks, pubKey, decrypt)
+
+	records := make([]blockRecord, 0, len(res.Blocks))
+	for i, br := range res.Blocks {
 		var evidID any
-		if b.EvidenceItemID != nil {
-			evidID = *b.EvidenceItemID
+		if br.EvidenceItemID != "" {
+			evidID = br.EvidenceItemID
+		}
+		// Raw signing-payload fields come from the same ordered rawBlocks slice
+		// so a third party can rebuild crypto.SigningPayload and verify independently.
+		var prevHash, contentHash, sig string
+		if i < len(rawBlocks) {
+			prevHash = rawBlocks[i].PrevHash
+			contentHash = rawBlocks[i].ContentHash
+			sig = base64.StdEncoding.EncodeToString(rawBlocks[i].Signature)
 		}
 		records = append(records, blockRecord{
-			BlockID:        b.BlockID,
-			Sequence:       i + 1,
+			BlockID:        br.BlockID,
+			Sequence:       br.Sequence,
 			EvidenceItemID: evidID,
-			CommittedAt:    b.CreatedAt.UTC().Format(time.RFC3339),
-			ContentHash:    b.ContentHash,
+			CommittedAt:    br.CommittedAt,
+			ContentHash:    contentHash,
 			PrevBlockHash:  prevHash,
-			Signature:      base64.StdEncoding.EncodeToString(b.Signature),
-			ChainValid:     valid,
+			Signature:      sig,
+			HashValid:      br.HashValid,
+			SignatureValid: br.SignatureValid,
+			LinkValid:      br.LinkValid,
+			Verdict:        string(br.Verdict),
+			Detail:         br.Detail,
 		})
 	}
+
 	return chainVerification{
 		CaseID:            caseData.CaseID,
 		CaseNumber:        caseData.CaseNumber,
 		ExportedAt:        time.Now().UTC().Format(time.RFC3339),
 		ExaminerPublicKey: pubKeyHex,
 		Blocks:            records,
-		ChainIntact:       allValid,
-		TotalBlocks:       len(rawBlocks),
+		ChainIntact:       res.ChainIntact,
+		TotalBlocks:       res.TotalBlocks,
+		FailedBlocks:      res.FailedBlocks,
+		FirstFailureSeq:   res.FirstFailureSeq,
 	}
 }
 
@@ -496,9 +513,16 @@ contains the complete chain in machine-readable form.
 
 To independently verify the chain integrity:
 1. Open chain_verification.json.
-2. For each block, verify content_hash matches the block's plaintext content.
-3. Verify each block's previous_block_hash matches the prior block's content_hash.
-4. Use the examiner public key to verify the Ed25519 signature over content_hash.
+2. For each block, verify content_hash matches the SHA-256 hex digest of the
+   block's plaintext content.
+3. Verify each block's previous_block_hash matches the prior block's content_hash
+   (genesis block has previous_block_hash "genesis").
+4. Rebuild the signing payload by joining these four fields with ASCII 0x1F
+   (Unit Separator) in this exact order:
+     content_hash + 0x1F + previous_block_hash + 0x1F + committed_at + 0x1F + block_id
+   committed_at is RFC3339 UTC truncated to whole seconds.
+5. Use the examiner public key (Ed25519) to verify the base64-decoded signature
+   field against the payload from step 4.
 `,
 		caseData.CaseNumber,
 		time.Now().UTC().Format(time.RFC3339),

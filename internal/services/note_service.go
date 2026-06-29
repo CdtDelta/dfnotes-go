@@ -13,6 +13,7 @@ import (
 	"dfnotes-go/internal/crypto"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/timer"
+	"dfnotes-go/internal/verify"
 
 	"github.com/google/uuid"
 )
@@ -201,7 +202,11 @@ func (s *NoteService) CommitNote(ctx context.Context, req CommitNoteRequest) (*N
 		prevHash = lastBlock.ContentHash
 	}
 
-	// Hash the content
+	// generate identity-of-block fields BEFORE signing
+	user := s.session.User()
+	now := time.Now().UTC()
+	blockID := uuid.New().String()
+
 	contentHash := crypto.HashContent([]byte(req.Content))
 
 	// Encrypt the content with the case key
@@ -210,12 +215,11 @@ func (s *NoteService) CommitNote(ctx context.Context, req CommitNoteRequest) (*N
 		return nil, err
 	}
 
-	// Sign the content hash with the user's private key
-	signature := crypto.Sign(s.session.PrivateKey(), []byte(contentHash))
-
-	user := s.session.User()
-	now := time.Now().UTC()
-	blockID := uuid.New().String()
+	// sign the canonical payload: content_hash + prev_hash + created_at + block_id
+	signature := crypto.Sign(
+		s.session.PrivateKey(),
+		crypto.SigningPayload(contentHash, prevHash, now, blockID),
+	)
 
 	block := &models.NoteBlock{
 		BlockID:       blockID,
@@ -293,39 +297,27 @@ func (s *NoteService) ListNotes(ctx context.Context, caseID string) ([]NoteBlock
 	}
 
 	user := s.session.User()
+	decrypt := func(ct []byte) ([]byte, error) { return crypto.Decrypt(caseKey, ct) }
 	responses := make([]NoteBlockResponse, len(blocks))
 	for i, block := range blocks {
 		blockTags := tagsToResponse(block.Tags)
 
-		plaintext, err := crypto.Decrypt(caseKey, block.EncryptedBody)
-		if err != nil {
-			responses[i] = NoteBlockResponse{
-				BlockID:     block.BlockID,
-				CaseID:      block.CaseID,
-				Content:     "[decryption failed]",
-				ContentHash: block.ContentHash,
-				PrevHash:    block.PrevHash,
-				AuthorID:    block.AuthorID,
-				CreatedAt:   block.CreatedAt.UTC().Format(time.RFC3339),
-				Verified:    false,
-				Tags:        blockTags,
-			}
-			continue
-		}
+		check, plaintext := verify.BlockIntegrity(block, user.PublicKey, decrypt)
 
-		recomputedHash := crypto.HashContent(plaintext)
-		hashValid := recomputedHash == block.ContentHash
-		sigValid := crypto.Verify(user.PublicKey, []byte(block.ContentHash), block.Signature)
+		content := "[decryption failed]"
+		if check.Decrypted {
+			content = string(plaintext)
+		}
 
 		responses[i] = NoteBlockResponse{
 			BlockID:     block.BlockID,
 			CaseID:      block.CaseID,
-			Content:     string(plaintext),
+			Content:     content,
 			ContentHash: block.ContentHash,
 			PrevHash:    block.PrevHash,
 			AuthorID:    block.AuthorID,
 			CreatedAt:   block.CreatedAt.UTC().Format(time.RFC3339),
-			Verified:    hashValid && sigValid,
+			Verified:    check.Decrypted && check.HashValid && check.SignatureValid,
 			Tags:        blockTags,
 		}
 	}
@@ -349,39 +341,27 @@ func (s *NoteService) ListEvidenceNotes(ctx context.Context, caseID, evidenceIte
 	}
 
 	user := s.session.User()
+	decrypt := func(ct []byte) ([]byte, error) { return crypto.Decrypt(caseKey, ct) }
 	responses := make([]NoteBlockResponse, len(blocks))
 	for i, block := range blocks {
 		blockTags := tagsToResponse(block.Tags)
 
-		plaintext, err := crypto.Decrypt(caseKey, block.EncryptedBody)
-		if err != nil {
-			responses[i] = NoteBlockResponse{
-				BlockID:     block.BlockID,
-				CaseID:      block.CaseID,
-				Content:     "[decryption failed]",
-				ContentHash: block.ContentHash,
-				PrevHash:    block.PrevHash,
-				AuthorID:    block.AuthorID,
-				CreatedAt:   block.CreatedAt.UTC().Format(time.RFC3339),
-				Verified:    false,
-				Tags:        blockTags,
-			}
-			continue
-		}
+		check, plaintext := verify.BlockIntegrity(block, user.PublicKey, decrypt)
 
-		recomputedHash := crypto.HashContent(plaintext)
-		hashValid := recomputedHash == block.ContentHash
-		sigValid := crypto.Verify(user.PublicKey, []byte(block.ContentHash), block.Signature)
+		content := "[decryption failed]"
+		if check.Decrypted {
+			content = string(plaintext)
+		}
 
 		responses[i] = NoteBlockResponse{
 			BlockID:     block.BlockID,
 			CaseID:      block.CaseID,
-			Content:     string(plaintext),
+			Content:     content,
 			ContentHash: block.ContentHash,
 			PrevHash:    block.PrevHash,
 			AuthorID:    block.AuthorID,
 			CreatedAt:   block.CreatedAt.UTC().Format(time.RFC3339),
-			Verified:    hashValid && sigValid,
+			Verified:    check.Decrypted && check.HashValid && check.SignatureValid,
 			Tags:        blockTags,
 		}
 	}
@@ -467,6 +447,47 @@ func (s *NoteService) GetAttachment(ctx context.Context, caseID, attachmentID st
 		ContentType:  att.ContentType,
 		Data:         base64.StdEncoding.EncodeToString(plaintext),
 	}, nil
+}
+
+// VerifyCaseChain runs a full cryptographic verification of the case chain.
+// Requires authentication and an unlocked case. Writes a VERIFY audit entry.
+func (s *NoteService) VerifyCaseChain(ctx context.Context, caseID string) (verify.Result, error) {
+	if !s.session.IsAuthenticated() {
+		return verify.Result{}, errors.New("not authenticated")
+	}
+
+	caseKey, err := s.getCaseKey(caseID)
+	if err != nil {
+		return verify.Result{}, err
+	}
+
+	blocks, err := s.noteBlockRepo.ListByCaseChainOrder(ctx, caseID)
+	if err != nil {
+		return verify.Result{}, fmt.Errorf("list blocks: %w", err)
+	}
+
+	user := s.session.User()
+	decrypt := func(ct []byte) ([]byte, error) { return crypto.Decrypt(caseKey, ct) }
+	res := verify.Chain(blocks, user.PublicKey, decrypt)
+
+	details, _ := json.Marshal(map[string]any{
+		"chain_intact":      res.ChainIntact,
+		"total_blocks":      res.TotalBlocks,
+		"failed_blocks":     res.FailedBlocks,
+		"first_failure_seq": res.FirstFailureSeq,
+	})
+	s.auditRepo.Create(ctx, &models.AuditLog{
+		LogID:      uuid.New().String(),
+		CaseID:     &caseID,
+		UserID:     user.UserID,
+		Action:     models.AuditActionVerify,
+		EntityType: "case",
+		EntityID:   caseID,
+		Details:    details,
+		CreatedAt:  time.Now().UTC(),
+	})
+
+	return res, nil
 }
 
 func (s *NoteService) ClearAll() {

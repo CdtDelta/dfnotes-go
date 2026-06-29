@@ -11,6 +11,7 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/verify"
 )
 
 // sectionHeading writes a bold section heading and adds a PDF bookmark.
@@ -229,20 +230,20 @@ func formatFactType(t string) string {
 }
 
 // BuildMasterNotesSection renders the Master Notes section.
-func BuildMasterNotesSection(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock) (int, int) {
+func BuildMasterNotesSection(p *fpdf.Fpdf, blocks []services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock, verifyMap map[string]verify.BlockResult) (int, int) {
 	p.AddPage()
 	startPage := p.PageNo()
 	link := sectionHeading(p, "Master Notes", 0)
 
 	for _, block := range blocks {
-		renderBlockHeader(p, block, rawBlockMap)
+		renderBlockHeader(p, block, rawBlockMap, verifyMap)
 		RenderMarkdown(p, block.Content)
 		separator(p)
 	}
 	return link, startPage
 }
 
-func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock) {
+func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock, verifyMap map[string]verify.BlockResult) {
 	// Top rule
 	p.SetDrawColor(180, 180, 180)
 	p.SetLineWidth(0.3)
@@ -264,10 +265,20 @@ func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockM
 	p.SetTextColor(30, 30, 30)
 	p.MultiCell(bodyWidth-labelW, lineHeight, block.ContentHash, "", "L", false)
 
-	// Verification status with semantic color
+	// Verification status driven by the precomputed verify.BlockResult.
+	// Falls back to block.Verified when the block is absent from the map.
 	verifyLabel := "VERIFIED"
 	vR, vG, vB := 0, 140, 0
-	if !block.Verified {
+	if vbr, ok := verifyMap[block.BlockID]; ok {
+		switch vbr.Verdict {
+		case verify.VerdictTampered:
+			verifyLabel = "TAMPERED - " + vbr.Detail
+			vR, vG, vB = 180, 0, 0
+		case verify.VerdictChainBreak:
+			verifyLabel = "CHAIN BREAK - " + vbr.Detail
+			vR, vG, vB = 180, 0, 0
+		}
+	} else if !block.Verified {
 		verifyLabel = "TAMPERED"
 		vR, vG, vB = 180, 0, 0
 	}
@@ -296,7 +307,7 @@ func renderBlockHeader(p *fpdf.Fpdf, block services.NoteBlockResponse, rawBlockM
 }
 
 // BuildEvidenceSection renders the Evidence Items section.
-func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceResponse, evidenceBlockMap map[string][]services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock, evidenceIndex map[string]string) (int, int) {
+func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceResponse, evidenceBlockMap map[string][]services.NoteBlockResponse, rawBlockMap map[string]models.NoteBlock, evidenceIndex map[string]string, verifyMap map[string]verify.BlockResult) (int, int) {
 	p.AddPage()
 	startPage := p.PageNo()
 	link := sectionHeading(p, "Evidence Items", 0)
@@ -353,7 +364,7 @@ func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceRespons
 			p.Ln(-1)
 			p.Ln(2)
 			for _, block := range blocks {
-				renderBlockHeader(p, block, rawBlockMap)
+				renderBlockHeader(p, block, rawBlockMap, verifyMap)
 				RenderMarkdown(p, block.Content)
 				separator(p)
 			}
@@ -679,101 +690,134 @@ func BuildTaskListSection(p *fpdf.Fpdf, tasks []models.Task, evidenceItems []ser
 }
 
 // BuildChainVerificationSection renders the Chain Verification section.
-func BuildChainVerificationSection(p *fpdf.Fpdf, rawBlocks []models.NoteBlock) (int, int) {
+func BuildChainVerificationSection(p *fpdf.Fpdf, result verify.Result) (int, int) {
 	p.AddPage()
 	startPage := p.PageNo()
 	link := sectionHeading(p, "Chain Verification", 0)
 
 	// Explanatory paragraph
-	const chainExplanation = "The chain verification section confirms the integrity of every committed note block in this case. Each block is cryptographically linked to the preceding block via SHA-256 hashing and digitally signed with the examiner's Ed25519 keypair. A failed signature or broken chain link indicates that one or more blocks were modified after commitment and the record should be considered suspect."
+	const chainExplanation = "Each committed block is decrypted and its content re-hashed and compared to the recorded hash. Its Ed25519 signature is verified over the canonical payload (content hash, previous-block hash, commit time, block id). Each block's link to the preceding block is also confirmed. A failed check means the stored record no longer matches what was committed and the block should be treated as suspect."
 	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(60, 60, 60)
 	p.SetX(marginLeft)
 	p.MultiCell(bodyWidth, lineHeight, chainExplanation, "", "L", false)
 	p.Ln(4)
 
-	// Compute chain validity
-	failCount := 0
-	type chainRow struct {
-		seq       int
-		blockID   string
-		committed string
-		hash      string
-		prevHash  string
-		sigValid  string
-		chainOK   string
-	}
-	var rows []chainRow
-
-	for i, b := range rawBlocks {
-		chainOK := "YES"
-		if i > 0 && rawBlocks[i-1].ContentHash != b.PrevHash {
-			chainOK = "NO"
-			failCount++
-		}
-		sigValid := "YES"
-		if len(b.Signature) == 0 {
-			sigValid = "NO"
-		}
-
-		prevHashShort := b.PrevHash
-		if len(prevHashShort) > 16 {
-			prevHashShort = prevHashShort[:16]
-		}
-
-		committed := b.CreatedAt.UTC().Format(time.RFC3339)
-
-		rows = append(rows, chainRow{
-			seq:       i + 1,
-			blockID:   b.BlockID,
-			committed: committed,
-			hash:      b.ContentHash,
-			prevHash:  prevHashShort,
-			sigValid:  sigValid,
-			chainOK:   chainOK,
-		})
-	}
-
 	// Summary line
 	p.SetFont("DejaVu", "", fontSizeBody+1)
-	if failCount == 0 {
+	if result.ChainIntact {
 		p.SetTextColor(0, 140, 0)
-		p.Cell(0, lineHeight+2, "Chain intact: YES")
+		p.Cell(0, lineHeight+2, fmt.Sprintf("Chain intact: YES. %d block(s) verified.", result.TotalBlocks))
 	} else {
 		p.SetTextColor(220, 60, 60)
-		p.Cell(0, lineHeight+2, fmt.Sprintf("Chain intact: NO -- %d block(s) failed verification", failCount))
+		p.Cell(0, lineHeight+2, fmt.Sprintf(
+			"Chain intact: NO. %d of %d block(s) failed verification. First failure: block %d.",
+			result.FailedBlocks, result.TotalBlocks, result.FirstFailureSeq,
+		))
 	}
 	p.Ln(-1)
 	p.Ln(4)
 	p.SetFont("DejaVu", "", fontSizeBody)
 	p.SetTextColor(30, 30, 30)
 
-	// Build table rows + cell styles for red cells
-	tableRows := make([][]string, len(rows))
+	// Table: Block # | Block ID | Committed At | Hash | Sig | Link | Verdict
+	// Column widths total 180mm (bodyWidth).
+	colWidths := []float64{12, 42, 36, 14, 12, 16, 48}
+	red := CellStyle{220, 60, 60}
+	tableRows := make([][]string, len(result.Blocks))
 	styles := make(map[string]CellStyle)
-	for i, r := range rows {
+
+	for i, br := range result.Blocks {
+		hashToken := "n/a"
+		if br.HashChecked {
+			if br.HashValid {
+				hashToken = "PASS"
+			} else {
+				hashToken = "FAIL"
+				styles[cellKey(i, 3)] = red
+			}
+		}
+
+		sigToken := "PASS"
+		if !br.SignatureValid {
+			sigToken = "FAIL"
+			styles[cellKey(i, 4)] = red
+		}
+
+		linkToken := "n/a"
+		if !br.IsGenesis {
+			if br.LinkValid {
+				linkToken = "OK"
+			} else {
+				linkToken = "BROKEN"
+				styles[cellKey(i, 5)] = red
+			}
+		}
+
+		verdictToken := "VERIFIED"
+		switch br.Verdict {
+		case verify.VerdictTampered:
+			verdictToken = "TAMPERED"
+			styles[cellKey(i, 6)] = red
+		case verify.VerdictChainBreak:
+			verdictToken = "CHAIN BREAK"
+			styles[cellKey(i, 6)] = red
+		}
+
+		blockIDDisplay := br.BlockID
+		if len(blockIDDisplay) > 18 {
+			blockIDDisplay = blockIDDisplay[:18]
+		}
+
 		tableRows[i] = []string{
-			fmt.Sprintf("%d", r.seq),
-			r.blockID,
-			r.committed,
-			r.hash,
-			r.prevHash,
-			r.sigValid,
-			r.chainOK,
-		}
-		if r.sigValid != "YES" {
-			styles[cellKey(i, 5)] = CellStyle{220, 60, 60}
-		}
-		if r.chainOK != "YES" {
-			styles[cellKey(i, 6)] = CellStyle{220, 60, 60}
+			fmt.Sprintf("%d", br.Sequence),
+			blockIDDisplay,
+			br.CommittedAt,
+			hashToken,
+			sigToken,
+			linkToken,
+			verdictToken,
 		}
 	}
+
 	DrawTableMonospace(p,
-		[]string{"Block #", "Block ID", "Committed At", "Content Hash", "Prev Hash", "Sig Valid", "Chain OK"},
-		[]float64{10, 50, 30, 40, 20, 14, 16},
+		[]string{"Block #", "Block ID", "Committed At", "Hash", "Sig", "Link", "Verdict"},
+		colWidths,
 		tableRows,
 		styles,
 	)
+
+	// Findings list
+	p.Ln(2)
+	p.SetFont("DejaVu", "", fontSizeBody)
+	if result.FailedBlocks > 0 {
+		p.SetTextColor(30, 30, 30)
+		p.SetX(marginLeft)
+		p.Cell(0, lineHeight, "Findings:")
+		p.Ln(-1)
+		p.Ln(2)
+		for _, br := range result.Blocks {
+			if br.Verdict == verify.VerdictVerified {
+				continue
+			}
+			verdictLabel := "TAMPERED"
+			if br.Verdict == verify.VerdictChainBreak {
+				verdictLabel = "CHAIN BREAK"
+			}
+			line := fmt.Sprintf("Block %d: %s - %s", br.Sequence, verdictLabel, br.Detail)
+			p.SetFont("DejaVu", "", fontSizeBody)
+			p.SetTextColor(220, 60, 60)
+			p.SetX(marginLeft)
+			p.MultiCell(bodyWidth, lineHeight, line, "", "L", false)
+		}
+	} else {
+		p.SetTextColor(30, 30, 30)
+		p.SetX(marginLeft)
+		p.Cell(0, lineHeight, "No anomalies detected.")
+		p.Ln(-1)
+	}
+	p.SetTextColor(30, 30, 30)
+
 	return link, startPage
 }
 

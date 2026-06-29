@@ -31,6 +31,7 @@ type NoteBlockRepository interface {
 	GetByID(ctx context.Context, blockID string) (*NoteBlock, error)
 	ListByCase(ctx context.Context, caseID string) ([]NoteBlock, error)
 	ListByEvidence(ctx context.Context, evidenceItemID string) ([]NoteBlock, error)
+	ListByCaseChainOrder(ctx context.Context, caseID string) ([]NoteBlock, error)
 	GetLastBlock(ctx context.Context, caseID string) (*NoteBlock, error)
 }
 

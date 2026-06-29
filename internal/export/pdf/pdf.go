@@ -12,6 +12,7 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/verify"
 )
 
 //go:embed fonts/DejaVuSans.ttf
@@ -39,6 +40,7 @@ type PDFRequest struct {
 	Attachments      map[string]*AttachmentInfo
 	AppVersion       string
 	ExportedAt       time.Time
+	VerifyResult     verify.Result // precomputed by the caller; drives chain section and per-block headers
 }
 
 // GenerateCasePDF generates a full-case PDF and returns its bytes.
@@ -91,6 +93,12 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 		rawBlockMap[b.BlockID] = b
 	}
 
+	// Build verify result lookup (blockID -> BlockResult) for per-block headers
+	verifyMap := make(map[string]verify.BlockResult, len(req.VerifyResult.Blocks))
+	for _, br := range req.VerifyResult.Blocks {
+		verifyMap[br.BlockID] = br
+	}
+
 	// All blocks in chain order for appendix image scan
 	allBlocks := make([]services.NoteBlockResponse, 0, len(req.MasterBlocks))
 	allBlocks = append(allBlocks, req.MasterBlocks...)
@@ -118,10 +126,10 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 	link, pg := BuildCaseFactsSection(p, req.CaseFacts, req.EvidenceItems)
 	addSection("Case Facts", link, pg)
 
-	link, pg = BuildMasterNotesSection(p, req.MasterBlocks, rawBlockMap)
+	link, pg = BuildMasterNotesSection(p, req.MasterBlocks, rawBlockMap, verifyMap)
 	addSection("Master Notes", link, pg)
 
-	link, pg = BuildEvidenceSection(p, req.EvidenceItems, req.EvidenceBlockMap, rawBlockMap, evidenceIndex)
+	link, pg = BuildEvidenceSection(p, req.EvidenceItems, req.EvidenceBlockMap, rawBlockMap, evidenceIndex, verifyMap)
 	addSection("Evidence Items", link, pg)
 
 	link, pg = BuildIOCSection(p, req.IOCEntries)
@@ -133,7 +141,7 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 	link, pg = BuildTaskListSection(p, req.Tasks, req.EvidenceItems, evidenceIndex)
 	addSection("Task List", link, pg)
 
-	link, pg = BuildChainVerificationSection(p, req.RawBlocks)
+	link, pg = BuildChainVerificationSection(p, req.VerifyResult)
 	addSection("Chain Verification", link, pg)
 
 	link, pg = BuildAppendixImages(p, allBlocks, req.Attachments)

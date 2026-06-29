@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"dfnotes-go/internal/backup"
 	"dfnotes-go/internal/config"
@@ -22,11 +24,12 @@ import (
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 	"dfnotes-go/internal/timer"
+	"dfnotes-go/internal/verify"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const AppVersion = "0.9.0"
+const AppVersion = "0.10.0"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -278,6 +281,94 @@ func (a *App) ListNotes(caseID string) ([]services.NoteBlockResponse, error) {
 // ListEvidenceNotes returns all note blocks for a specific evidence item, decrypted and verified.
 func (a *App) ListEvidenceNotes(caseID, evidenceItemID string) ([]services.NoteBlockResponse, error) {
 	return a.noteService.ListEvidenceNotes(a.ctx, caseID, evidenceItemID)
+}
+
+// ChainVerificationResult is the JSON-friendly DTO returned by VerifyChain.
+type ChainVerificationResult struct {
+	ChainIntact     bool               `json:"chain_intact"`
+	TotalBlocks     int                `json:"total_blocks"`
+	FailedBlocks    int                `json:"failed_blocks"`
+	FirstFailureSeq int                `json:"first_failure_seq"`
+	VerifiedAt      string             `json:"verified_at"` // RFC3339 UTC, set at binding time
+	Blocks          []ChainBlockResult `json:"blocks"`
+}
+
+// ChainBlockResult is the per-block entry in ChainVerificationResult.
+type ChainBlockResult struct {
+	Sequence       int    `json:"sequence"`
+	BlockID        string `json:"block_id"`
+	Source         string `json:"source"`          // "Master" or item_number (display label)
+	EvidenceItemID string `json:"evidence_item_id"` // "" for master notes; raw id otherwise
+	CommittedAt    string `json:"committed_at"`
+	IsAmendment    bool   `json:"is_amendment"`
+	IsGenesis      bool   `json:"is_genesis"`
+	Decrypted      bool   `json:"decrypted"`
+	HashChecked    bool   `json:"hash_checked"`
+	HashValid      bool   `json:"hash_valid"`
+	SignatureValid bool   `json:"signature_valid"`
+	LinkValid      bool   `json:"link_valid"`
+	Verdict        string `json:"verdict"` // verified | tampered | chain_break
+	Detail         string `json:"detail"`
+}
+
+// VerifyChain runs a full cryptographic verification of the case chain and
+// returns a JSON-friendly result. Evidence item IDs are resolved to their
+// item_number labels for display.
+func (a *App) VerifyChain(caseID string) (ChainVerificationResult, error) {
+	if a.noteService == nil {
+		return ChainVerificationResult{}, fmt.Errorf("database not initialized")
+	}
+
+	res, err := a.noteService.VerifyCaseChain(a.ctx, caseID)
+	if err != nil {
+		return ChainVerificationResult{}, err
+	}
+
+	// Build EvidenceItemID -> item_number index for Source resolution.
+	evidIndex := make(map[string]string)
+	if a.evidenceService != nil {
+		items, _ := a.evidenceService.ListEvidence(a.ctx, caseID)
+		for _, item := range items {
+			evidIndex[item.EvidenceItemID] = item.ItemNumber
+		}
+	}
+
+	blocks := make([]ChainBlockResult, 0, len(res.Blocks))
+	for _, br := range res.Blocks {
+		source := "Master"
+		if br.EvidenceItemID != "" {
+			if label, ok := evidIndex[br.EvidenceItemID]; ok && label != "" {
+				source = label
+			} else {
+				source = br.EvidenceItemID
+			}
+		}
+		blocks = append(blocks, ChainBlockResult{
+			Sequence:       br.Sequence,
+			BlockID:        br.BlockID,
+			Source:         source,
+			EvidenceItemID: br.EvidenceItemID,
+			CommittedAt:    br.CommittedAt,
+			IsAmendment:    br.IsAmendment,
+			IsGenesis:      br.IsGenesis,
+			Decrypted:      br.Decrypted,
+			HashChecked:    br.HashChecked,
+			HashValid:      br.HashValid,
+			SignatureValid: br.SignatureValid,
+			LinkValid:      br.LinkValid,
+			Verdict:        string(br.Verdict),
+			Detail:         br.Detail,
+		})
+	}
+
+	return ChainVerificationResult{
+		ChainIntact:     res.ChainIntact,
+		TotalBlocks:     res.TotalBlocks,
+		FailedBlocks:    res.FailedBlocks,
+		FirstFailureSeq: res.FirstFailureSeq,
+		VerifiedAt:      time.Now().UTC().Format(time.RFC3339),
+		Blocks:          blocks,
+	}, nil
 }
 
 // AddEvidence adds a new evidence item to a case.
@@ -710,7 +801,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			evidenceBlockMap[item.EvidenceItemID] = blocks
 		}
 
-		rawBlocks, err := noteBlockRepo.ListByCase(ctx, caseID)
+		rawBlocks, err := noteBlockRepo.ListByCaseChainOrder(ctx, caseID)
 		if err != nil {
 			emitErr(fmt.Sprintf("list raw blocks: %v", err))
 			return
@@ -753,6 +844,10 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			ArchivePath:     archivePath,
 			ExaminerName:    user.Name,
 			ExaminerPubKey:  user.PublicKey,
+			Decrypt: func(ct []byte) ([]byte, error) {
+				s, err := noteService.DecryptBlockContent(caseID, ct)
+				return []byte(s), err
+			},
 		}
 
 		archivePath, err := export.ExportCase(
@@ -955,7 +1050,7 @@ func (a *App) runExportCasePDF() {
 		evidenceBlockMap[item.EvidenceItemID] = blocks
 	}
 
-	rawBlocks, err := a.noteBlockRepo.ListByCase(ctx, caseID)
+	rawBlocks, err := a.noteBlockRepo.ListByCaseChainOrder(ctx, caseID)
 	if err != nil {
 		showPDFError(ctx, "list raw blocks: "+err.Error())
 		return
@@ -1027,6 +1122,13 @@ func (a *App) runExportCasePDF() {
 		}
 	}
 
+	// Compute chain verification once (mirrors 7z export; does not write a VERIFY audit entry).
+	pdfDecrypt := func(ct []byte) ([]byte, error) {
+		s, err := a.noteService.DecryptBlockContent(caseID, ct)
+		return []byte(s), err
+	}
+	pdfVerifyResult := verify.Chain(rawBlocks, ed25519.PublicKey(user.PublicKey), pdfDecrypt)
+
 	req := exportpdf.PDFRequest{
 		CaseData:         caseData,
 		ExaminerName:     user.Name,
@@ -1040,6 +1142,7 @@ func (a *App) runExportCasePDF() {
 		CaseFacts:        caseFacts,
 		Attachments:      attachments,
 		AppVersion:       AppVersion,
+		VerifyResult:     pdfVerifyResult,
 	}
 
 	pdfBytes, err := exportpdf.GenerateCasePDF(req)

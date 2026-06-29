@@ -76,6 +76,35 @@ func (r *NoteBlockRepo) ListByCase(ctx context.Context, caseID string) ([]models
 	return blocks, nil
 }
 
+// ListByCaseChainOrder returns all blocks for a case ordered by SQLite rowid
+// ascending. rowid is monotonic with insertion order, so this is true chain
+// order and is immune to same-second created_at ties. Do not use for display
+// (ListByCase owns display ordering); use only for chain verification.
+// Tags are not loaded because the verifier does not need them.
+func (r *NoteBlockRepo) ListByCaseChainOrder(ctx context.Context, caseID string) ([]models.NoteBlock, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT block_id, case_id, evidence_item_id, amends_block_id, content_hash, prev_hash, signature, encrypted_body, author_id, created_at
+		 FROM note_blocks WHERE case_id = ? ORDER BY rowid ASC`, caseID)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+
+	var blocks []models.NoteBlock
+	for rows.Next() {
+		block, err := r.scanBlock(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		blocks = append(blocks, *block)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return blocks, nil
+}
+
 func (r *NoteBlockRepo) ListByEvidence(ctx context.Context, evidenceItemID string) ([]models.NoteBlock, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT block_id, case_id, evidence_item_id, amends_block_id, content_hash, prev_hash, signature, encrypted_body, author_id, created_at

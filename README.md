@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.9.0**
+**Version 0.10.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -132,7 +132,7 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `case_facts.json` -- all case facts with type, description, value, and source references
   - `timeline.json` -- all timeline entries
   - `tasks.json` -- all tasks with status, evidence item, and linked block references
-  - `chain_verification.json` -- full hash chain with per-block validation results and `chain_intact` flag
+  - `chain_verification.json` -- full hash chain with per-block verification results (content hash, previous-block hash, commit timestamp, block id, base64 signature, verdict, and detail) and top-level `chain_intact` flag; contains all fields needed for independent re-verification
 - Once extracted, archive contents are not encrypted -- handle according to your organization's data handling policy
 - Export logged in the audit trail
 
@@ -140,8 +140,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Full case PDF export via File > Export PDF
 - Classification level header and footer on every page, color-coded by level
 - Sections: cover page, table of contents, case facts, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
-- Note blocks rendered with full verification hash (SHA-256), commitment timestamp, and block ID
-- Chain verification section includes chain-intact summary and per-block signature and hash validation table
+- Note blocks rendered with full verification hash (SHA-256), commitment timestamp, and block ID; per-block headers show the real verification verdict from the chain run
+- Chain verification section: explanatory statement, chain-intact summary line, per-block table (hash, signature, link, verdict), and a findings list for any failures
 - IOC values displayed defanged throughout; case fact values displayed raw
 - SHA-256 sidecar file written alongside the PDF for integrity verification
 - Export logged in the audit trail
@@ -159,9 +159,18 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Per-case encryption keys wrapped by the master key
 - All note block content encrypted with AES-256-GCM
 
+### Chain Verification
+- Button-triggered integrity check from the Chain Verification tab (far right of the tab bar)
+- Decrypts each block, recomputes its SHA-256 content hash, and verifies the Ed25519 signature over the canonical payload (content hash, previous-block hash, commit timestamp, and block id, joined by ASCII Unit Separator 0x1F)
+- Confirms each block's chain link to its predecessor
+- Verdict banner plus a per-block table in chain order; failed rows highlighted; click any row to navigate directly to that block
+- Per-block verdicts: VERIFIED; TAMPERED with reason (decryption failed, content hash mismatch, signature invalid); CHAIN BREAK with detail (chains to altered block N, does not chain to prior block)
+- Each run is logged as a VERIFY audit entry
+- The same engine drives the live note badges, the Chain Verification tab, the 7z export chain_verification.json, and the PDF chain verification section -- all surfaces use identical logic
+
 ### User Guide
 - Built-in help accessible from Help > User Guide
-- 12 sections covering all features
+- 15 sections covering all features
 - Fully theme-aware
 
 ---
@@ -221,6 +230,17 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.10.0 (2026-06-29)
+
+**Chain Verification Engine**
+- New `internal/verify` package with real per-block verification: decrypt each block, recompute the SHA-256 content hash, verify the Ed25519 signature over the canonical payload, and confirm chain linkage to the preceding block
+- Block signatures now cover a canonical payload of four fields joined by ASCII Unit Separator (0x1F): content hash, previous-block hash, commit timestamp (RFC3339 UTC, second precision), and block id. Signatures previously covered the content hash only; blocks committed before 0.10.0 will show signature-invalid
+- New Chain Verification tab (far right of the tab bar): button-triggered, ephemeral result; verdict banner plus a full per-block table in chain order; failed rows highlighted; click a row to navigate to the source block; run logged as a VERIFY audit entry
+- Per-block verdict vocabulary: VERIFIED; TAMPERED with reason (decryption failed, content hash mismatch, signature invalid); CHAIN BREAK with detail (chains to altered block N, does not chain to prior block, expected genesis block)
+- 7z export chain_verification.json now carries real per-block results plus the raw materials for independent re-verification: content_hash, previous_block_hash, committed_at, block_id, and base64-encoded signature, alongside verdict and detail
+- PDF chain verification section now renders real verdicts from the same engine; per-block headers in Master Notes and Evidence sections show the real verdict, so a chain-break block no longer prints VERIFIED in its own header
+- All surfaces (live note badges, Chain Verification tab, 7z export, PDF) run the same `internal/verify` engine and cannot disagree
 
 ### v0.9.0 (2026-06-26)
 
@@ -399,6 +419,12 @@ build/bin/dfnotes-go
 - Global hash chain per case
 - Tamper detection with verified/unverified badges
 - Audit log
+
+---
+
+## Verification
+
+See [VERIFICATION.md](VERIFICATION.md) for a full description of the integrity model: what each committed block carries, what the verification checks, the verdict taxonomy, and how a third party can independently re-verify an export using chain_verification.json and the examiner public key without running dfnotes-go.
 
 ---
 
