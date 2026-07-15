@@ -113,7 +113,9 @@ const helpSections: HelpSection[] = [
                     Evidence items are numbered using a configurable prefix and digit count set at case creation.
                     The default format is <code>E001</code>, <code>E002</code>, and so on. Custom formats such as
                     <code> DF-2025-001</code> are supported by setting a custom prefix and digit count when creating
-                    the case. The prefix accepts alphanumeric characters, hyphens, and underscores.
+                    the case. The prefix accepts alphanumeric characters, hyphens, and underscores. The
+                    assigned item number and the name given at creation are displayed together in the
+                    evidence list and when viewing an item's notes or details.
                 </p>
                 <h3>Registering Evidence</h3>
                 <p>

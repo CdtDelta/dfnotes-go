@@ -39,6 +39,9 @@ export default function EvidenceCard({ item, onSelect }: EvidenceCardProps) {
         >
             <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-1.5 min-w-0 mr-2">
+                    <span className="shrink-0 font-mono text-xs px-1.5 py-0.5 rounded border bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-color)]">
+                        {item.item_number}
+                    </span>
                     <h4 className="text-sm font-semibold text-gray-100 truncate">{item.name}</h4>
                     {missingArchiveLocation && (
                         <span className="shrink-0 w-2 h-2 rounded-full bg-amber-500" title="Archive location not recorded" />

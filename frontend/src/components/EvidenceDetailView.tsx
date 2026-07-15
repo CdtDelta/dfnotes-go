@@ -215,7 +215,12 @@ export default function EvidenceDetailView({ item, onBack, onUpdated }: Evidence
             {/* Metadata */}
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
                 <div className="flex items-start justify-between mb-4 gap-3">
-                    <h3 className="text-lg font-semibold text-gray-100">{item.name}</h3>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="shrink-0 font-mono text-xs px-1.5 py-0.5 rounded border bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-color)]">
+                            {item.item_number}
+                        </span>
+                        <h3 className="text-lg font-semibold text-gray-100">{item.name}</h3>
+                    </div>
                     {missingArchiveLocation && (
                         <span className="shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-amber-800 text-amber-200">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">

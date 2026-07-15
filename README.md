@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.10.0**
+**Version 0.10.1**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -230,6 +230,16 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.10.1 (2026-07-15)
+
+**Evidence Item Identification**
+- Evidence item number (e.g. E001, DF-2025-001) now displayed as a badge
+  next to the item name in the evidence list and in the evidence detail
+  view
+- Evidence item note tabs now show a static header combining the item
+  number and name above the note editor, so the tab's content is
+  self-identifying without needing to cross-reference the evidence list
 
 ### v0.10.0 (2026-06-29)
 

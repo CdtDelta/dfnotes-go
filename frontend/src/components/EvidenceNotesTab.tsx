@@ -63,8 +63,15 @@ export default function EvidenceNotesTab({ caseId, evidenceItemId, evidenceItems
         )
         : reversedNotes;
 
+    const currentItem = evidenceItems?.find((i) => i.evidence_item_id === evidenceItemId);
+
     return (
         <div className="space-y-6">
+            {currentItem && (
+                <h3 className="text-sm font-medium text-gray-400">
+                    {currentItem.item_number} -- {currentItem.name}
+                </h3>
+            )}
             {/* Editor Section */}
             <NoteEditor
                 caseId={caseId}
