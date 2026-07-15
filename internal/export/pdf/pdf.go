@@ -13,6 +13,7 @@ import (
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 	"dfnotes-go/internal/verify"
+	"dfnotes-go/internal/version"
 )
 
 //go:embed fonts/DejaVuSans.ttf
@@ -49,7 +50,7 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 		req.ExportedAt = time.Now().UTC()
 	}
 	if req.AppVersion == "" {
-		req.AppVersion = appVersion
+		req.AppVersion = version.AppVersion
 	}
 
 	p := fpdf.New("P", "mm", "A4", "")

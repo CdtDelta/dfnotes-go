@@ -25,11 +25,10 @@ import (
 	"dfnotes-go/internal/services"
 	"dfnotes-go/internal/timer"
 	"dfnotes-go/internal/verify"
+	"dfnotes-go/internal/version"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-const AppVersion = "0.10.0"
 
 type DocReminderSettings struct {
 	Enabled         bool `json:"enabled"`
@@ -701,7 +700,7 @@ func (a *App) TriggerBackupNow() error {
 
 // GetVersion returns the application version string.
 func (a *App) GetVersion() string {
-	return AppVersion
+	return version.AppVersion
 }
 
 // GetConfig returns the current application configuration.
@@ -1141,7 +1140,7 @@ func (a *App) runExportCasePDF() {
 		Tasks:            taskList,
 		CaseFacts:        caseFacts,
 		Attachments:      attachments,
-		AppVersion:       AppVersion,
+		AppVersion:       version.AppVersion,
 		VerifyResult:     pdfVerifyResult,
 	}
 

@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 
+	"dfnotes-go/internal/version"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -49,7 +51,7 @@ func createMenu(app *App) *menu.Menu {
 		wailsruntime.MessageDialog(app.ctx, wailsruntime.MessageDialogOptions{
 			Type:    wailsruntime.InfoDialog,
 			Title:   "About DFNotes",
-			Message: "DFNotes - Digital Forensic Notebook\nVersion " + AppVersion + "\nSecure, tamper-evident case notes.",
+			Message: "DFNotes - Digital Forensic Notebook\nVersion " + version.AppVersion + "\nSecure, tamper-evident case notes.",
 		})
 	})
 

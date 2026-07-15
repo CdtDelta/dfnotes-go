@@ -18,10 +18,6 @@ const (
 
 	lineHeight     = 6.0
 	lineHeightBody = 6.0
-
-	// AppVersion is embedded in the cover page of generated PDFs.
-	AppVersion = "0.6.0"
-	appVersion = AppVersion
 )
 
 // classColor holds RGB values for a classification level banner.

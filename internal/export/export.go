@@ -21,10 +21,8 @@ import (
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
 	"dfnotes-go/internal/verify"
+	"dfnotes-go/internal/version"
 )
-
-// TODO: source this from the canonical AppVersion constant in main once the packages align.
-const appVersion = "0.10.0"
 
 var (
 	reSanitizeTS      = regexp.MustCompile(`[^a-zA-Z0-9]`)
@@ -527,7 +525,7 @@ To independently verify the chain integrity:
 		caseData.CaseNumber,
 		time.Now().UTC().Format(time.RFC3339),
 		examiner,
-		appVersion,
+		version.AppVersion,
 		caseData.CaseNumber,
 	)
 }
