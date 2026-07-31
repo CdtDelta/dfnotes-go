@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.10.1**
+**Version 0.10.2**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -226,10 +226,25 @@ build/bin/dfnotes-go
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
 - **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
 - **PDF bold text:** The PDF export renders bold text in regular weight. DejaVu Sans Bold is not yet embedded; bold style falls back to regular weight throughout the PDF.
+- **Evidence item cross-referencing in export JSON:** `ioc_summary.json`, `case_facts.json`, and the markdown block file header comments still reference evidence items by raw `evidence_item_id` (UUID) rather than the configured item_number. `metadata.json` and `tasks.json` do carry the human-readable number.
 
 ---
 
 ## Changelog
+
+### v0.10.2 (2026-07-31)
+
+**Evidence Export Numbering Fix**
+- PDF export (Evidence Items section, Timeline source column, Task List
+  evidence column) and 7z export (tasks.json evidence labels) now use
+  each case's configured evidence item_number instead of a positional
+  E### label derived from creation order. Cases using a custom evidence
+  prefix (e.g. DF-2025-) previously showed the default E001 format in
+  exports regardless of configuration
+- 7z export evidence metadata.json now includes an item_number field,
+  giving each evidence item's configured number a canonical place in
+  the export archive (previously only identifiable by the raw
+  evidence_item_id UUID)
 
 ### v0.10.1 (2026-07-15)
 

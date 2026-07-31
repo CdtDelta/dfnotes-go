@@ -163,17 +163,9 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 }
 
 func buildEvidenceIndex(items []services.EvidenceResponse) map[string]string {
-	sorted := make([]services.EvidenceResponse, len(items))
-	copy(sorted, items)
-	// Sort by created_at for consistent numbering
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && sorted[j].CreatedAt < sorted[j-1].CreatedAt; j-- {
-			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
-		}
-	}
-	index := make(map[string]string, len(sorted))
-	for i, item := range sorted {
-		index[item.EvidenceItemID] = fmt.Sprintf("E%03d", i+1)
+	index := make(map[string]string, len(items))
+	for _, item := range items {
+		index[item.EvidenceItemID] = item.ItemNumber
 	}
 	return index
 }

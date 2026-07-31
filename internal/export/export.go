@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -259,13 +258,10 @@ func ExportCase(
 
 	// --- tasks.json ---
 	progress("writing tasks", 68)
-	// Build evidence item index for E-number labels
-	sortedEvidence := make([]services.EvidenceResponse, len(evidenceItems))
-	copy(sortedEvidence, evidenceItems)
-	sortEvidenceByCreatedAt(sortedEvidence)
-	evidenceIndex := make(map[string]string, len(sortedEvidence))
-	for i, item := range sortedEvidence {
-		evidenceIndex[item.EvidenceItemID] = fmt.Sprintf("E%03d", i+1)
+	// Build evidence item index for evidence number labels
+	evidenceIndex := make(map[string]string, len(evidenceItems))
+	for _, item := range evidenceItems {
+		evidenceIndex[item.EvidenceItemID] = item.ItemNumber
 	}
 
 	taskExports := make([]taskExport, 0, len(tasks))
@@ -457,6 +453,7 @@ func buildChainVerification(caseData *services.CaseResponse, rawBlocks []models.
 
 type evidenceMeta struct {
 	ItemID          string                          `json:"item_id"`
+	ItemNumber      string                          `json:"item_number"`
 	Name            string                          `json:"name"`
 	Description     string                          `json:"description"`
 	Type            string                          `json:"type"`
@@ -471,6 +468,7 @@ type evidenceMeta struct {
 func buildEvidenceMeta(item services.EvidenceResponse) evidenceMeta {
 	return evidenceMeta{
 		ItemID:          item.EvidenceItemID,
+		ItemNumber:      item.ItemNumber,
 		Name:            item.Name,
 		Description:     item.Description,
 		Type:            item.EvidenceType,
@@ -551,12 +549,6 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
-}
-
-func sortEvidenceByCreatedAt(items []services.EvidenceResponse) {
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].CreatedAt < items[j].CreatedAt
-	})
 }
 
 func sanitizeTS(ts string) string {
