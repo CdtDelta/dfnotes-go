@@ -268,8 +268,8 @@ func (s *EvidenceService) AddCustodyEntry(ctx context.Context, req AddCustodyEnt
 	s.timerService.ResetPartial()
 
 	details, _ := json.Marshal(map[string]string{
-		"action":      "add_custody_entry",
-		"evidence_id": item.EvidenceItemID,
+		"action":       "add_custody_entry",
+		"evidence_id":  item.EvidenceItemID,
 		"entry_action": req.Action,
 	})
 	s.auditRepo.Create(ctx, &models.AuditLog{

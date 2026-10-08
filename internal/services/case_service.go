@@ -16,32 +16,32 @@ import (
 var evidencePrefixRegex = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 type CreateCaseRequest struct {
-	CaseNumber                string                    `json:"case_number"`
-	Title                     string                    `json:"title"`
-	Classification            models.ClassificationLevel `json:"classification"`
-	TicketNumber              string                    `json:"ticket_number"`
-	Description               string                    `json:"description"`
-	CasePassword              string                    `json:"case_password"`
-	EvidencePrefix            string                    `json:"evidence_prefix"`
-	EvidenceSeqDigits         int                       `json:"evidence_seq_digits"`
-	AttorneyClientPrivilege   bool                      `json:"attorney_client_privilege"`
+	CaseNumber              string                     `json:"case_number"`
+	Title                   string                     `json:"title"`
+	Classification          models.ClassificationLevel `json:"classification"`
+	TicketNumber            string                     `json:"ticket_number"`
+	Description             string                     `json:"description"`
+	CasePassword            string                     `json:"case_password"`
+	EvidencePrefix          string                     `json:"evidence_prefix"`
+	EvidenceSeqDigits       int                        `json:"evidence_seq_digits"`
+	AttorneyClientPrivilege bool                       `json:"attorney_client_privilege"`
 }
 
 type CaseResponse struct {
-	CaseID                    string `json:"case_id"`
-	CaseNumber                string `json:"case_number"`
-	Title                     string `json:"title"`
-	Description               string `json:"description"`
-	Classification            string `json:"classification"`
-	TicketNumber              string `json:"ticket_number"`
-	ExaminerName              string `json:"examiner_name"`
-	Organization              string `json:"organization"`
-	EvidencePrefix            string `json:"evidence_prefix"`
-	EvidenceSeqDigits         int    `json:"evidence_seq_digits"`
-	CreatedBy                 string `json:"created_by"`
-	CreatedAt                 string `json:"created_at"`
-	UpdatedAt                 string `json:"updated_at"`
-	AttorneyClientPrivilege   bool   `json:"attorney_client_privilege"`
+	CaseID                  string `json:"case_id"`
+	CaseNumber              string `json:"case_number"`
+	Title                   string `json:"title"`
+	Description             string `json:"description"`
+	Classification          string `json:"classification"`
+	TicketNumber            string `json:"ticket_number"`
+	ExaminerName            string `json:"examiner_name"`
+	Organization            string `json:"organization"`
+	EvidencePrefix          string `json:"evidence_prefix"`
+	EvidenceSeqDigits       int    `json:"evidence_seq_digits"`
+	CreatedBy               string `json:"created_by"`
+	CreatedAt               string `json:"created_at"`
+	UpdatedAt               string `json:"updated_at"`
+	AttorneyClientPrivilege bool   `json:"attorney_client_privilege"`
 }
 
 type CaseService struct {

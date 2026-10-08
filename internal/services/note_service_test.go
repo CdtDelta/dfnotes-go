@@ -15,14 +15,14 @@ import (
 // noopTimer satisfies timer.Service for tests without any goroutines.
 type noopTimer struct{}
 
-func (noopTimer) Start()          {}
-func (noopTimer) Stop()           {}
-func (noopTimer) ResetFull()      {}
-func (noopTimer) ResetPartial()   {}
-func (noopTimer) Snooze(int)      {}
-func (noopTimer) Pause()          {}
-func (noopTimer) Resume()         {}
-func (noopTimer) IsPaused() bool  { return false }
+func (noopTimer) Start()         {}
+func (noopTimer) Stop()          {}
+func (noopTimer) ResetFull()     {}
+func (noopTimer) ResetPartial()  {}
+func (noopTimer) Snooze(int)     {}
+func (noopTimer) Pause()         {}
+func (noopTimer) Resume()        {}
+func (noopTimer) IsPaused() bool { return false }
 
 // setupNoteServiceTest wires a real DB with real repos and a real session,
 // using production crypto keys. Returns the service and the raw block repo so
