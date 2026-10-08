@@ -89,13 +89,23 @@ func (s *NoteService) UnlockCase(ctx context.Context, req UnlockCaseRequest) err
 	if !s.session.IsAuthenticated() {
 		return errors.New("not authenticated")
 	}
-	if req.CaseID == "" || req.CasePassword == "" {
-		return errors.New("case ID and case password are required")
+	if req.CaseID == "" {
+		return errors.New("case ID is required")
 	}
 
 	c, err := s.caseRepo.GetByID(ctx, req.CaseID)
 	if err != nil {
 		return err
+	}
+
+	if c.NoCasePassword {
+		return s.unlockWithoutPassword(ctx, c)
+	}
+
+	// The password check can only happen once the case is loaded, because
+	// passwordless cases accept an empty password.
+	if req.CasePassword == "" {
+		return errors.New("case ID and case password are required")
 	}
 
 	// Derive what the case key should be from the entered password
@@ -121,7 +131,40 @@ func (s *NoteService) UnlockCase(ctx context.Context, req UnlockCaseRequest) err
 	s.caseKeys[req.CaseID] = candidateKey
 	s.mu.Unlock()
 
+	s.auditUnlock(ctx, c.CaseID, "password")
 	return nil
+}
+
+// unlockWithoutPassword unwraps the case key with the master key alone. Any
+// supplied password is ignored; there is nothing to compare it against.
+func (s *NoteService) unlockWithoutPassword(ctx context.Context, c *models.Case) error {
+	storedKey, err := crypto.Decrypt(s.session.DerivedKey(), c.EncryptedKey)
+	if err != nil {
+		return errors.New("unable to unlock case: case key could not be decrypted")
+	}
+
+	s.mu.Lock()
+	s.caseKeys[c.CaseID] = storedKey
+	s.mu.Unlock()
+
+	s.auditUnlock(ctx, c.CaseID, "no_password")
+	return nil
+}
+
+// auditUnlock records a successful unlock and how it was authorized, so the
+// audit trail shows which cases were opened without a case password.
+func (s *NoteService) auditUnlock(ctx context.Context, caseID, method string) {
+	details, _ := json.Marshal(map[string]string{"method": method})
+	s.auditRepo.Create(ctx, &models.AuditLog{
+		LogID:      uuid.New().String(),
+		CaseID:     &caseID,
+		UserID:     s.session.User().UserID,
+		Action:     models.AuditActionUnlock,
+		EntityType: "case",
+		EntityID:   caseID,
+		Details:    details,
+		CreatedAt:  time.Now().UTC(),
+	})
 }
 
 // HasActiveCases returns true if any case is currently unlocked.

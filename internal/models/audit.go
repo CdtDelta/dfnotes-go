@@ -18,6 +18,7 @@ const (
 	AuditActionSign       AuditAction = "SIGN"
 	AuditActionVerify     AuditAction = "VERIFY"
 	AuditActionCustody    AuditAction = "CUSTODY"
+	AuditActionUnlock     AuditAction = "UNLOCK"
 )
 
 type AuditLog struct {

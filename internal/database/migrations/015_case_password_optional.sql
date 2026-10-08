@@ -1,0 +1,1 @@
+ALTER TABLE cases ADD COLUMN case_password_required INTEGER NOT NULL DEFAULT 1;

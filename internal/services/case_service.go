@@ -25,6 +25,9 @@ type CreateCaseRequest struct {
 	EvidencePrefix          string                     `json:"evidence_prefix"`
 	EvidenceSeqDigits       int                        `json:"evidence_seq_digits"`
 	AttorneyClientPrivilege bool                       `json:"attorney_client_privilege"`
+	// NoCasePassword is opt-out on purpose: a client that omits the field gets
+	// the JSON zero value (false), which means a case password is required.
+	NoCasePassword bool `json:"no_case_password"`
 }
 
 type CaseResponse struct {
@@ -42,6 +45,7 @@ type CaseResponse struct {
 	CreatedAt               string `json:"created_at"`
 	UpdatedAt               string `json:"updated_at"`
 	AttorneyClientPrivilege bool   `json:"attorney_client_privilege"`
+	NoCasePassword          bool   `json:"no_case_password"`
 }
 
 type CaseService struct {
@@ -62,7 +66,14 @@ func (s *CaseService) CreateCase(ctx context.Context, req CreateCaseRequest) (*C
 	if !s.session.IsAuthenticated() {
 		return nil, errors.New("not authenticated")
 	}
-	if req.CaseNumber == "" || req.Title == "" || req.CasePassword == "" {
+	if req.NoCasePassword {
+		if req.CaseNumber == "" || req.Title == "" {
+			return nil, errors.New("case number and title are required")
+		}
+		if req.CasePassword != "" {
+			return nil, errors.New("case password must be empty when no case password is selected")
+		}
+	} else if req.CaseNumber == "" || req.Title == "" || req.CasePassword == "" {
 		return nil, errors.New("case number, title, and case password are required")
 	}
 
@@ -82,12 +93,22 @@ func (s *CaseService) CreateCase(ctx context.Context, req CreateCaseRequest) (*C
 		req.EvidenceSeqDigits = 6
 	}
 
-	salt, err := crypto.GenerateSalt()
-	if err != nil {
-		return nil, err
+	// A passwordless case gets a random key and no salt. Either way the key is
+	// wrapped by the master key, which is what actually protects it at rest.
+	var salt, caseKey []byte
+	var err error
+	if req.NoCasePassword {
+		caseKey, err = crypto.GenerateCaseKey()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		salt, err = crypto.GenerateSalt()
+		if err != nil {
+			return nil, err
+		}
+		caseKey = crypto.DeriveKey(req.CasePassword, salt)
 	}
-
-	caseKey := crypto.DeriveKey(req.CasePassword, salt)
 
 	// Encrypt the case key with the user's master derived key
 	encryptedKey, err := crypto.Encrypt(s.session.DerivedKey(), caseKey)
@@ -116,13 +137,23 @@ func (s *CaseService) CreateCase(ctx context.Context, req CreateCaseRequest) (*C
 		CreatedAt:               now,
 		UpdatedAt:               now,
 		AttorneyClientPrivilege: req.AttorneyClientPrivilege,
+		NoCasePassword:          req.NoCasePassword,
 	}
 
 	if err := s.caseRepo.Create(ctx, c); err != nil {
 		return nil, err
 	}
 
-	details, _ := json.Marshal(map[string]string{"action": "create_case", "case_id": caseID, "case_number": req.CaseNumber})
+	casePasswordRequired := "true"
+	if req.NoCasePassword {
+		casePasswordRequired = "false"
+	}
+	details, _ := json.Marshal(map[string]string{
+		"action":                 "create_case",
+		"case_id":                caseID,
+		"case_number":            req.CaseNumber,
+		"case_password_required": casePasswordRequired,
+	})
 	s.auditRepo.Create(ctx, &models.AuditLog{
 		LogID:      uuid.New().String(),
 		CaseID:     &caseID,
@@ -261,5 +292,6 @@ func caseToResponse(c *models.Case) *CaseResponse {
 		CreatedAt:               c.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:               c.UpdatedAt.UTC().Format(time.RFC3339),
 		AttorneyClientPrivilege: c.AttorneyClientPrivilege,
+		NoCasePassword:          c.NoCasePassword,
 	}
 }

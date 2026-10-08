@@ -29,4 +29,7 @@ type Case struct {
 	CreatedAt                 time.Time           `json:"created_at"`
 	UpdatedAt                 time.Time           `json:"updated_at"`
 	AttorneyClientPrivilege   bool                `json:"attorney_client_privilege"`
+	// NoCasePassword is opt-out so the zero value fails closed: a Case built
+	// without this field set requires a case password.
+	NoCasePassword            bool                `json:"no_case_password"`
 }
