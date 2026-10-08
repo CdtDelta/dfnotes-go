@@ -1,8 +1,8 @@
 package services
 
 import (
-	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -104,11 +104,16 @@ func (s *NoteService) UnlockCase(ctx context.Context, req UnlockCaseRequest) err
 	// Unwrap the real case key stored at creation time (encrypted under user's master key)
 	storedKey, err := crypto.Decrypt(s.session.DerivedKey(), c.EncryptedKey)
 	if err != nil {
+		clear(candidateKey)
 		return errors.New("invalid case password")
 	}
 
-	// Compare: if they match, the password is correct
-	if !bytes.Equal(candidateKey, storedKey) {
+	// Constant-time compare so response timing does not leak how many key
+	// bytes matched.
+	match := subtle.ConstantTimeCompare(candidateKey, storedKey) == 1
+	clear(storedKey)
+	if !match {
+		clear(candidateKey)
 		return errors.New("invalid case password")
 	}
 

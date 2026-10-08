@@ -154,3 +154,34 @@ func TestRoundTripSignatureValid(t *testing.T) {
 		)
 	}
 }
+
+// TestUnlockCaseWrongPassword confirms a wrong case password is rejected with
+// the expected error and leaves no key material in caseKeys.
+func TestUnlockCaseWrongPassword(t *testing.T) {
+	svc, _, _, _, _ := setupNoteServiceTest(t)
+	ctx := context.Background()
+	caseID := "test-case-1"
+
+	// The setup helper unlocks the case; lock it so we start from a locked state.
+	if err := svc.LockCase(ctx, caseID); err != nil {
+		t.Fatalf("LockCase: %v", err)
+	}
+
+	err := svc.UnlockCase(ctx, UnlockCaseRequest{
+		CaseID:       caseID,
+		CasePassword: "wrong-password",
+	})
+	if err == nil {
+		t.Fatal("UnlockCase with wrong password succeeded, want error")
+	}
+	if err.Error() != "invalid case password" {
+		t.Errorf("error = %q, want %q", err.Error(), "invalid case password")
+	}
+
+	if svc.HasActiveCases() {
+		t.Error("HasActiveCases is true after failed unlock")
+	}
+	if _, err := svc.getCaseKey(caseID); err == nil {
+		t.Error("getCaseKey returned a key after failed unlock, want case is locked")
+	}
+}
