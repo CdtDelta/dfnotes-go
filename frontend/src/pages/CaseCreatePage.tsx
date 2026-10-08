@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreateCase, GetUserInfo } from '../../wailsjs/go/main/App';
 import ErrorMessage from '../components/ErrorMessage';
 import PasswordInput from '../components/PasswordInput';
+import NoCasePasswordConfirmDialog from '../components/NoCasePasswordConfirmDialog';
 
 const CLASSIFICATIONS = [
     'UNCLASSIFIED',
@@ -29,6 +30,9 @@ export default function CaseCreatePage() {
     const [casePassword, setCasePassword] = useState('');
     const [confirmCasePassword, setConfirmCasePassword] = useState('');
     const [attorneyClientPrivilege, setAttorneyClientPrivilege] = useState(false);
+    const [requireCasePassword, setRequireCasePassword] = useState(true);
+    // Which point opened the no-password confirm dialog, or null when closed.
+    const [noPasswordConfirm, setNoPasswordConfirm] = useState<'uncheck' | 'submit' | null>(null);
 
     const PREFIX_REGEX = /^[A-Za-z0-9_-]+$/;
 
@@ -64,23 +68,35 @@ export default function CaseCreatePage() {
             setError('Case title is required');
             return;
         }
-        if (!casePassword) {
-            setError('Case password is required');
-            return;
-        }
-        if (casePassword.length < 8) {
-            setError('Case password must be at least 8 characters');
-            return;
-        }
-        if (casePassword !== confirmCasePassword) {
-            setError('Passwords do not match');
-            return;
+        if (requireCasePassword) {
+            if (!casePassword) {
+                setError('Case password is required');
+                return;
+            }
+            if (casePassword.length < 8) {
+                setError('Case password must be at least 8 characters');
+                return;
+            }
+            if (casePassword !== confirmCasePassword) {
+                setError('Passwords do not match');
+                return;
+            }
         }
         if (!evidencePrefix || !PREFIX_REGEX.test(evidencePrefix)) {
             setError('Evidence prefix must contain only letters, digits, hyphens, and underscores');
             return;
         }
 
+        if (!requireCasePassword) {
+            // Second confirmation; the dialog's confirm button calls createCase.
+            setNoPasswordConfirm('submit');
+            return;
+        }
+
+        await createCase();
+    };
+
+    const createCase = async () => {
         setLoading(true);
         try {
             await CreateCase({
@@ -89,7 +105,8 @@ export default function CaseCreatePage() {
                 classification,
                 ticket_number: ticketNumber.trim(),
                 description: description.trim(),
-                case_password: casePassword,
+                case_password: requireCasePassword ? casePassword : '',
+                no_case_password: !requireCasePassword,
                 evidence_prefix: evidencePrefix,
                 evidence_seq_digits: evidenceSeqDigits,
                 attorney_client_privilege: attorneyClientPrivilege,
@@ -99,6 +116,31 @@ export default function CaseCreatePage() {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRequirePasswordChange = (checked: boolean) => {
+        if (checked) {
+            setRequireCasePassword(true);
+            return;
+        }
+        // The box stays checked until the examiner confirms in the dialog.
+        setNoPasswordConfirm('uncheck');
+    };
+
+    const handleNoPasswordGoBack = useCallback(() => {
+        setNoPasswordConfirm(null);
+    }, []);
+
+    const handleNoPasswordConfirm = () => {
+        const point = noPasswordConfirm;
+        setNoPasswordConfirm(null);
+        if (point === 'uncheck') {
+            setRequireCasePassword(false);
+            setCasePassword('');
+            setConfirmCasePassword('');
+        } else if (point === 'submit') {
+            createCase();
         }
     };
 
@@ -237,30 +279,46 @@ export default function CaseCreatePage() {
                     </div>
 
                     <div className="border-t border-gray-700 pt-4">
-                        <p className="text-sm text-gray-400 mb-3">
-                            The case password is used for per-case encryption key derivation.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label className="flex items-start gap-3 cursor-pointer select-none mb-4">
+                            <input
+                                type="checkbox"
+                                checked={requireCasePassword}
+                                onChange={(e) => handleRequirePasswordChange(e.target.checked)}
+                                className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-800 accent-[var(--accent-primary)] cursor-pointer"
+                            />
                             <div>
-                                <label className="block text-sm text-gray-400 mb-1">Case Password *</label>
-                                <PasswordInput
-                                    value={casePassword}
-                                    onChange={(e) => setCasePassword(e.target.value)}
-                                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
-                                    placeholder="Minimum 8 characters"
-                                    showPaste
-                                />
+                                <span className="text-sm text-gray-200">Require a case password</span>
+                                <p className="text-xs text-gray-500 mt-0.5">Ask for a separate password every time this case is opened. This can't be changed later.</p>
                             </div>
-                            <div>
-                                <label className="block text-sm text-gray-400 mb-1">Confirm Password *</label>
-                                <PasswordInput
-                                    value={confirmCasePassword}
-                                    onChange={(e) => setConfirmCasePassword(e.target.value)}
-                                    className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
-                                    placeholder="Re-enter password"
-                                />
-                            </div>
-                        </div>
+                        </label>
+                        {requireCasePassword && (
+                            <>
+                                <p className="text-sm text-gray-400 mb-3">
+                                    The case password is used for per-case encryption key derivation.
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-1">Case Password *</label>
+                                        <PasswordInput
+                                            value={casePassword}
+                                            onChange={(e) => setCasePassword(e.target.value)}
+                                            className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
+                                            placeholder="Minimum 8 characters"
+                                            showPaste
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-1">Confirm Password *</label>
+                                        <PasswordInput
+                                            value={confirmCasePassword}
+                                            onChange={(e) => setConfirmCasePassword(e.target.value)}
+                                            className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-gray-100 focus:border-blue-500 focus:outline-none"
+                                            placeholder="Re-enter password"
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div className="border-t border-gray-700 pt-4">
@@ -296,6 +354,13 @@ export default function CaseCreatePage() {
                     </div>
                 </form>
             </div>
+
+            {noPasswordConfirm && (
+                <NoCasePasswordConfirmDialog
+                    onGoBack={handleNoPasswordGoBack}
+                    onConfirm={handleNoPasswordConfirm}
+                />
+            )}
         </div>
     );
 }

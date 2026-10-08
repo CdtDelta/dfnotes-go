@@ -154,6 +154,10 @@ export default function CaseOverviewTab({ caseData, onClassificationChanged, onP
                         <span className="text-gray-500">({caseData.evidence_seq_digits} digits)</span>
                     </p>
                 </div>
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                    <label className="text-xs text-gray-500 uppercase tracking-wide">Case password</label>
+                    <p className="text-gray-100 mt-1">{caseData.no_case_password === true ? 'Not required' : 'Required'}</p>
+                </div>
             </div>
             <div className="flex items-center gap-3 px-1">
                 {privilege ? (

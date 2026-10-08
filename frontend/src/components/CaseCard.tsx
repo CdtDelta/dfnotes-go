@@ -23,6 +23,11 @@ export default function CaseCard({ caseData }: CaseCardProps) {
                             Privileged
                         </span>
                     )}
+                    {caseData.no_case_password === true && (
+                        <span className="text-xs px-1.5 py-0.5 rounded border bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-color)]">
+                            No case password
+                        </span>
+                    )}
                     <ClassificationBadge level={caseData.classification} />
                 </div>
             </div>

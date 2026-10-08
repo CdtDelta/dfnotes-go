@@ -19,7 +19,7 @@ import PasswordInput from '../components/PasswordInput';
 import DocReminderModal from '../components/DocReminderModal';
 import DocReminderPausedBanner from '../components/DocReminderPausedBanner';
 
-type PageState = 'loading' | 'locked' | 'unlocked';
+type PageState = 'loading' | 'locked' | 'unlocked' | 'unlock-failed';
 
 export default function CaseDetailPage() {
     const { caseId } = useParams<{ caseId: string }>();
@@ -78,25 +78,24 @@ export default function CaseDetailPage() {
             .catch(() => {});
     }, [caseId]);
 
-    useEffect(() => {
-        if (!caseId) return;
-        GetCase(caseId)
-            .then((result) => {
-                setCaseData(result);
-                setPageState('locked');
-            })
-            .catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : String(err));
-                setPageState('locked');
-            });
-    }, [caseId]);
-
-    const handleUnlock = async () => {
-        if (!caseId || !password) return;
+    // Returns whether UnlockCase itself succeeded, so the passwordless path can
+    // tell an unlock failure apart from a later reminder setup error.
+    // shouldAbort lets the passwordless effect bail out if the page went away
+    // while UnlockCase was in flight, before any listener is registered.
+    const unlockWithPassword = async (casePassword: string, shouldAbort?: () => boolean): Promise<boolean> => {
+        if (!caseId) return false;
+        let unlocked = false;
         setUnlocking(true);
         setError('');
         try {
-            await UnlockCase({ case_id: caseId, case_password: password } as services.UnlockCaseRequest);
+            await UnlockCase({ case_id: caseId, case_password: casePassword } as services.UnlockCaseRequest);
+            if (shouldAbort?.()) {
+                // The unmount auto-lock saw 'loading' and skipped, so the key
+                // must be zeroed here.
+                LockCase(caseId).catch(() => {});
+                return false;
+            }
+            unlocked = true;
             setPassword('');
             setPageState('unlocked');
             fetchEvidenceItems();
@@ -112,13 +111,53 @@ export default function CaseDetailPage() {
         } finally {
             setUnlocking(false);
         }
+        return unlocked;
     };
+
+    useEffect(() => {
+        if (!caseId) return;
+        let cancelled = false;
+        GetCase(caseId)
+            .then(async (result) => {
+                setCaseData(result);
+                // Explicit === true: a missing or undefined value means a
+                // password is required (fail closed).
+                if (result.no_case_password !== true) {
+                    setPageState('locked');
+                    return;
+                }
+                const unlocked = await unlockWithPassword('', () => cancelled);
+                if (cancelled) {
+                    // unlockWithPassword already re-locked the case if needed.
+                    return;
+                }
+                if (!unlocked) {
+                    setPageState('unlock-failed');
+                }
+            })
+            .catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : String(err));
+                setPageState('locked');
+            });
+        return () => { cancelled = true; };
+    }, [caseId]);
+
+    const handleUnlock = async () => {
+        if (!caseId || !password) return;
+        await unlockWithPassword(password);
+    };
+
+    const isPasswordless = caseData?.no_case_password === true;
 
     const handleLock = async () => {
         if (!caseId) return;
         try {
             await LockCase(caseId);
             teardownReminder();
+            if (isPasswordless) {
+                navigate('/');
+                return;
+            }
             setPageState('locked');
             setActiveTab('overview');
         } catch (err: unknown) {
@@ -171,6 +210,10 @@ export default function CaseDetailPage() {
                 LockCase(caseId)
                     .then(() => {
                         teardownReminder();
+                        if (isPasswordless) {
+                            navigate('/');
+                            return;
+                        }
                         setPageState('locked');
                         setActiveTab('overview');
                     })
@@ -180,7 +223,7 @@ export default function CaseDetailPage() {
             }
         });
         return cleanup;
-    }, [pageState, caseId]);
+    }, [pageState, caseId, isPasswordless]);
 
     if (pageState === 'loading') {
         return (
@@ -252,10 +295,28 @@ export default function CaseDetailPage() {
                     )}
                 </div>
 
-                <ErrorMessage message={error} onDismiss={() => setError('')} />
+                {pageState !== 'unlock-failed' && (
+                    <ErrorMessage message={error} onDismiss={() => setError('')} />
+                )}
+
+                {/* Passwordless unlock failed: never fall back to the password prompt */}
+                {pageState === 'unlock-failed' && (
+                    <div className="flex justify-center py-16">
+                        <div className="w-full max-w-sm text-center space-y-4">
+                            <h2 className="text-lg font-semibold text-gray-200">Unable to open this case</h2>
+                            <p className="text-sm text-gray-400 break-words">{error}</p>
+                            <button
+                                onClick={() => navigate('/')}
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition-colors"
+                            >
+                                Back to dashboard
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Locked State */}
-                {pageState === 'locked' && (
+                {pageState === 'locked' && !isPasswordless && (
                     <div className="flex justify-center py-16">
                         <div className="w-full max-w-sm">
                             <div className="text-center mb-6">
