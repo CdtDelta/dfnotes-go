@@ -82,6 +82,7 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 	metaRows := [][]string{
 		{"Examiner:", req.ExaminerName},
 		{"Organization:", req.CaseData.Organization},
+		{"Case Password:", casePasswordLabel(req.CaseData.NoCasePassword)},
 	}
 	if req.CaseData.TicketNumber != "" {
 		metaRows = append(metaRows, []string{"Ticket Number:", req.CaseData.TicketNumber})
@@ -109,6 +110,13 @@ func BuildCoverPage(p *fpdf.Fpdf, req PDFRequest) {
 	p.SetTextColor(80, 80, 80)
 	p.SetX(marginLeft)
 	p.MultiCell(bodyWidth, lineHeight, "SHA-256 of this file is recorded in the accompanying .sha256 sidecar file.", "", "C", false)
+}
+
+func casePasswordLabel(noCasePassword bool) string {
+	if noCasePassword {
+		return "Not required (case protected by examiner login only)"
+	}
+	return "Required"
 }
 
 // BuildTOCPlaceholder adds the TOC page and returns the page number and Y where TOC content should start.

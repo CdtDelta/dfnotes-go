@@ -51,6 +51,9 @@ type caseMetadata struct {
 	Description         string `json:"description"`
 	CreatedAt           string `json:"created_at"`
 	UpdatedAt           string `json:"updated_at"`
+	// CasePasswordRequired is a human-readable disclosure, not a control, so it
+	// keeps the positive name even though the in-code field is NoCasePassword.
+	CasePasswordRequired bool `json:"case_password_required"`
 }
 
 type blockRecord struct {
@@ -162,16 +165,17 @@ func ExportCase(
 	// --- case_metadata.json ---
 	progress("writing case metadata", 10)
 	meta := caseMetadata{
-		CaseID:              caseData.CaseID,
-		CaseNumber:          caseData.CaseNumber,
-		Title:               caseData.Title,
-		ExaminerName:        req.ExaminerName,
-		Organization:        caseData.Organization,
-		ClassificationLevel: caseData.Classification,
-		TicketNumber:        caseData.TicketNumber,
-		Description:         caseData.Description,
-		CreatedAt:           caseData.CreatedAt,
-		UpdatedAt:           caseData.UpdatedAt,
+		CaseID:               caseData.CaseID,
+		CaseNumber:           caseData.CaseNumber,
+		Title:                caseData.Title,
+		ExaminerName:         req.ExaminerName,
+		Organization:         caseData.Organization,
+		ClassificationLevel:  caseData.Classification,
+		TicketNumber:         caseData.TicketNumber,
+		Description:          caseData.Description,
+		CreatedAt:            caseData.CreatedAt,
+		UpdatedAt:            caseData.UpdatedAt,
+		CasePasswordRequired: !caseData.NoCasePassword,
 	}
 	if err := writeJSON(filepath.Join(tmpDir, "case_metadata.json"), meta); err != nil {
 		return "", err
