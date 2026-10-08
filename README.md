@@ -12,7 +12,7 @@ dfnotes-go is built around a core principle: every note you write during an inve
 
 Beyond integrity, it handles the practical side of forensic case work:
 
-- Per-case encrypted storage with a separate case password
+- Per-case encrypted storage with a separate case password (on by default, optional at creation)
 - Evidence item tracking with configurable numbering and chain of custody logging
 - Automated IOC detection (12 types) with confirm/false positive/promote workflow
 - Manual IOC and Case Fact creation from selected text in committed block views
@@ -31,7 +31,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Case creation with classification level (Unclassified through Top Secret), ticket number, examiner info
 - Classification level editable from the Case Overview tab at any time; changes are audit logged
 - Attorney-Client Privilege flag: set at case creation or toggled from Case Overview at any time; changes are audit logged; privileged cases show an amber badge in Case Overview and a Privileged badge on the dashboard case card
-- Per-case encryption key derived from a case password via Argon2id
+- Per-case encryption key derived from the case password via Argon2id, or randomly generated for cases created without one
+- Optional case password, chosen per case at creation: the default is a separate case password; unchecking "Require a case password" creates a case that opens with the examiner login alone. The choice is confirmed twice with a plain-English warning and cannot be changed after creation. Passwordless cases show a "No case password" badge on the dashboard and a "Case password: Not required" line in Case Overview
 - Case lock/unlock -- walk away from your workstation without exposing case data
 - Multiple cases per installation, each independently encrypted
 
@@ -156,7 +157,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 - User identity with Ed25519 keypair generated on first launch
 - Optional TOTP MFA with QR code enrollment and one-time recovery codes
 - Master key derived from application password via Argon2id
-- Per-case encryption keys wrapped by the master key
+- Per-case encryption keys wrapped by the master key. The case password is a second access gate on top of the examiner login, not a separate cryptographic boundary: anyone who has the login password can unwrap every case key
+- Every successful case unlock is written to the audit log as an UNLOCK entry, recording whether a case password was used
 - All note block content encrypted with AES-256-GCM
 
 ### Chain Verification
@@ -231,6 +233,25 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.11.0 (2026-10-08)
+
+**Optional Case Password**
+- New "Require a case password" checkbox on the case creation form, checked by default
+- Unchecking it creates a case protected by the examiner login only. A confirmation dialog explaining the impact appears when the box is unchecked and again when the case is created; "Go back" is the default button both times
+- The choice is permanent for that case. There is no way to add or remove a case password after creation
+- Passwordless cases open directly from the dashboard with no prompt, and locking one (header button or File > Lock Case) returns to the dashboard
+- Passwordless cases use a random 32-byte case key wrapped by the master key. Note encryption, hashing, signing, and chain verification are unchanged; a passwordless case verifies exactly like any other
+- "No case password" badge on the dashboard card and a read-only "Case password" field in Case Overview
+- Disclosed in exports: `case_password_required` in case_metadata.json and a "Case Password" line on the PDF cover page
+- Migration 015 adds `case_password_required` to the cases table, defaulting to required, so every existing case stays password-protected
+
+**Audit**
+- Every successful case unlock now writes an UNLOCK audit entry with the method used (`password` or `no_password`). Previously unlocks were not audited
+
+**Security Hardening**
+- Case password comparison now uses a constant-time compare
+- Case key material is zeroed after the unlock comparison on both success and failure paths
 
 ### v0.10.2 (2026-07-31)
 

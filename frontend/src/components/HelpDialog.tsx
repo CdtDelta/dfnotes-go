@@ -20,7 +20,7 @@ const helpSections: HelpSection[] = [
                     title, classification level, and creation date.
                 </p>
                 <h3>Creating a Case</h3>
-                <p>Click <strong>New Case</strong> from the dashboard to open the case creation form. All fields are required:</p>
+                <p>Click <strong>New Case</strong> from the dashboard to open the case creation form. All fields are required unless noted:</p>
                 <ul>
                     <li><strong>Case Number</strong> -- your organization's case reference (e.g. DF-2025-001)</li>
                     <li><strong>Title</strong> -- a short descriptive name for the case</li>
@@ -28,9 +28,35 @@ const helpSections: HelpSection[] = [
                     <li><strong>Organization</strong> -- the agency or team conducting the investigation</li>
                     <li><strong>Classification</strong> -- the sensitivity level (Unclassified through Top Secret)</li>
                     <li><strong>Ticket Number</strong> -- your organization's ticketing system reference</li>
-                    <li><strong>Case Password</strong> -- used to encrypt the case key at rest. Choose a strong, unique password.
+                    <li><strong>Case Password</strong> -- on by default, optional at creation (see Case Password below). Choose a strong, unique password.
                         This password cannot be recovered. If lost, the case data is unrecoverable.</li>
                 </ul>
+                <h3>Case Password</h3>
+                <p>
+                    By default, every case has its own password in addition to your login password. You'll be
+                    asked for it each time you open the case.
+                </p>
+                <p>
+                    If you uncheck <strong>Require a case password</strong> when creating a case, the case opens
+                    with your login alone. Before the case is created, dfnotes-go asks you to confirm this twice.
+                </p>
+                <p>What changes without a case password:</p>
+                <ul>
+                    <li>Anyone who can log in to dfnotes-go on this computer can open the case without being asked for anything else.</li>
+                    <li>If you walk away while logged in, the case is not locked behind its own password.</li>
+                </ul>
+                <p>What stays the same:</p>
+                <ul>
+                    <li>Your notes are still encrypted, hashed, signed, and chained.</li>
+                    <li>Chain verification and exports work exactly the same way.</li>
+                </ul>
+                <p>
+                    This choice can't be changed later. If a case needs a password after it's created, create a new case.
+                </p>
+                <p>
+                    Passwordless cases show a <strong>No case password</strong> badge on the dashboard. Locking one
+                    returns you to the dashboard.
+                </p>
                 <h3>Opening and Unlocking a Case</h3>
                 <p>
                     Click a case on the dashboard to open it. You will be prompted for the case password.
