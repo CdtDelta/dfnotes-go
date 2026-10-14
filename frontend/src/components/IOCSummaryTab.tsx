@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
-    GetCaseIOCs, UpdateIOCStatus, UpdateIOCType,
-    PromoteIOCToFact, RestorePromotedIOC, GetCaseFacts, GetFactTypes,
+    GetCaseFacts, GetFactTypes,
 } from '../../wailsjs/go/main/App';
 import { services, models } from '../../wailsjs/go/models';
 import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
 import { IOC_PATTERNS } from '../utils/iocPatterns';
 import { defang } from '../utils/defang';
+
+// TODO(v0.12.0 Pass 5b): remove these stubs with the Summary rewrite.
+async function GetCaseIOCs(_caseID: string, _includeAll: boolean): Promise<IOCEntry[]> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
+async function UpdateIOCStatus(_iocID: string, _status: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
+async function UpdateIOCType(_iocID: string, _iocType: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
+async function PromoteIOCToFact(_iocID: string, _req: models.CreateCaseFactRequest): Promise<models.CaseFact> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
+async function RestorePromotedIOC(_iocID: string, _factID: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
 
 interface IOCSummaryTabProps {
     caseId: string;

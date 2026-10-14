@@ -1,33 +1,50 @@
-import { useState } from 'react';
-import { CreateManualIOC } from '../../wailsjs/go/main/App';
+import { useRef, useState } from 'react';
+import { MarkManualIOC } from '../../wailsjs/go/main/App';
 import { IOC_PATTERNS, detectIOCType } from '../utils/iocPatterns';
+import type { UpsertResult } from '../utils/iocTypes';
+import Modal, { MODAL_BUTTON_PRIMARY, MODAL_BUTTON_SECONDARY, MODAL_ERROR, MODAL_INPUT, MODAL_LABEL, MODAL_SELECT } from './Modal';
 
 interface ManualIOCModalProps {
     value: string;
     blockId: string;
     caseId: string;
-    evidenceItemId: string; // empty string treated as null by the backend
     onClose: () => void;
-    /** Called after CreateManualIOC succeeds; triggers iocVersion increment in the parent. */
+    /** Called after MarkManualIOC records a change; triggers iocVersion increment in the parent. */
     onSave: () => void;
 }
 
-const INPUT = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
-const LABEL = 'block text-xs text-gray-400 mb-1';
-
-export default function ManualIOCModal({ value, blockId, caseId, evidenceItemId, onClose, onSave }: ManualIOCModalProps) {
+export default function ManualIOCModal({ value, blockId, caseId, onClose, onSave }: ManualIOCModalProps) {
     const [iocType, setIocType] = useState<string>(() => detectIOCType(value) ?? '');
     const [editValue, setEditValue] = useState(value);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    // Set when the backend reports the value is already tracked on this block.
+    const [alreadyTracked, setAlreadyTracked] = useState('');
+
+    const selectRef = useRef<HTMLSelectElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    // Chosen once at mount, matching the old autoFocus behavior: the type
+    // select when no type was detected, otherwise the value field.
+    const [initialFocusRef] = useState(() => (detectIOCType(value) ? inputRef : selectRef));
+
+    const handleClose = () => {
+        if (!saving) onClose();
+    };
 
     const handleSubmit = async () => {
+        if (saving) return;
+        if (alreadyTracked) { onClose(); return; }
         setError('');
         if (!iocType) { setError('Type is required.'); return; }
-        if (!editValue.trim()) { setError('Value is required.'); return; }
+        const trimmed = editValue.trim();
+        if (!trimmed) { setError('Value is required.'); return; }
         setSaving(true);
         try {
-            await CreateManualIOC(caseId, blockId, evidenceItemId, iocType, editValue.trim());
+            const result = (await MarkManualIOC(caseId, blockId, iocType, trimmed)) as UpsertResult;
+            if (result.already_tracked) {
+                setAlreadyTracked(`Already tracked as ${iocType}:${trimmed} (${result.status.replace('_', ' ')}).`);
+                return;
+            }
             onSave();
             onClose();
         } catch (err: unknown) {
@@ -39,62 +56,64 @@ export default function ManualIOCModal({ value, blockId, caseId, evidenceItemId,
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) handleSubmit();
-        if (e.key === 'Escape') onClose();
     };
 
+    // Editing after an "already tracked" answer means the user wants to try a
+    // different type or value, so the form goes back to saving.
+    const clearAlreadyTracked = () => {
+        if (alreadyTracked) setAlreadyTracked('');
+    };
+
+    const primaryLabel = alreadyTracked ? 'Close' : saving ? 'Saving...' : 'Save IOC';
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-            <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-200">Mark as IOC</h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+        <Modal
+            title="Mark as IOC"
+            onClose={handleClose}
+            closeOnBackdrop={!!alreadyTracked}
+            initialFocusRef={initialFocusRef}
+            footer={
+                <>
+                    <button type="button" onClick={handleSubmit} disabled={saving} className={MODAL_BUTTON_PRIMARY}>
+                        {primaryLabel}
                     </button>
-                </div>
-                <div>
-                    <label className={LABEL}>Type *</label>
-                    <select
-                        value={iocType}
-                        onChange={(e) => setIocType(e.target.value)}
-                        className={INPUT}
-                        autoFocus={!iocType}
-                    >
-                        {!iocType && <option value="">-- select type --</option>}
-                        {IOC_PATTERNS.map((p) => (
-                            <option key={p.type} value={p.type}>{p.label}</option>
-                        ))}
-                    </select>
-                </div>
-                <div>
-                    <label className={LABEL}>Value (stored raw, defanged on display) *</label>
-                    <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        className={INPUT}
-                        autoFocus={!!iocType}
-                    />
-                </div>
-                {error && <p className="text-xs text-red-400">{error}</p>}
-                <div className="flex gap-2">
-                    <button
-                        onClick={handleSubmit}
-                        disabled={saving}
-                        className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
-                    >
-                        {saving ? 'Saving...' : 'Save IOC'}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
-                    >
-                        Cancel
-                    </button>
-                </div>
+                    {!alreadyTracked && (
+                        <button type="button" onClick={handleClose} disabled={saving} className={MODAL_BUTTON_SECONDARY}>
+                            Cancel
+                        </button>
+                    )}
+                </>
+            }
+        >
+            <div>
+                <label htmlFor="manual-ioc-type" className={MODAL_LABEL}>Type *</label>
+                <select
+                    id="manual-ioc-type"
+                    ref={selectRef}
+                    value={iocType}
+                    onChange={(e) => { setIocType(e.target.value); clearAlreadyTracked(); }}
+                    className={MODAL_SELECT}
+                >
+                    {!iocType && <option value="">-- select type --</option>}
+                    {IOC_PATTERNS.map((p) => (
+                        <option key={p.type} value={p.type}>{p.label}</option>
+                    ))}
+                </select>
             </div>
-        </div>
+            <div>
+                <label htmlFor="manual-ioc-value" className={MODAL_LABEL}>Value (stored raw, defanged on display) *</label>
+                <input
+                    id="manual-ioc-value"
+                    ref={inputRef}
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => { setEditValue(e.target.value); clearAlreadyTracked(); }}
+                    onKeyDown={handleKeyDown}
+                    className={MODAL_INPUT}
+                />
+            </div>
+            {alreadyTracked && <p className="text-xs text-[var(--text-secondary)]">{alreadyTracked}</p>}
+            {error && <p role="alert" className={MODAL_ERROR}>{error}</p>}
+        </Modal>
     );
 }

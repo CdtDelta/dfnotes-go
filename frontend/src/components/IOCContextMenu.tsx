@@ -1,17 +1,17 @@
-import { useEffect, useRef } from 'react';
-import { UpdateIOCStatus } from '../../wailsjs/go/main/App';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { UpdateIndicatorStatus } from '../../wailsjs/go/main/App';
 import type { IOCStatus, IOCType } from '../utils/iocTypes';
 import { IOC_PATTERNS } from '../utils/iocPatterns';
 
 interface IOCContextMenuProps {
     x: number;
     y: number;
-    iocId: string;
+    indicatorId: string;
     iocType: IOCType;
     iocValue: string;
     iocStatus: IOCStatus;
     onClose: () => void;
-    onStatusChanged: (iocId: string, newStatus: IOCStatus) => void;
+    onStatusChanged: (indicatorId: string, newStatus: IOCStatus) => void;
     onPromoteRequested?: () => void;
     // Selection-based options appended below IOC options when a text selection
     // was active at right-click time.
@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<IOCStatus, string> = {
 };
 
 export default function IOCContextMenu({
-    x, y, iocId, iocType, iocValue, iocStatus, onClose, onStatusChanged, onPromoteRequested,
+    x, y, indicatorId, iocType, iocValue, iocStatus, onClose, onStatusChanged, onPromoteRequested,
     selectionText, onMarkAsIOC, onAddAsCaseFact,
 }: IOCContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
@@ -67,11 +67,23 @@ export default function IOCContextMenu({
         };
     }, [onClose]);
 
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    // On failure the menu stays open with the backend's message so the
+    // examiner sees that the status did not change.
     const handleAction = async (next: IOCStatus) => {
+        if (busy) return;
+        setBusy(true);
+        setError('');
         try {
-            await UpdateIOCStatus(iocId, next);
-            onStatusChanged(iocId, next);
-        } catch { /* ignore */ }
+            await UpdateIndicatorStatus(indicatorId, next);
+        } catch (err: unknown) {
+            setError(String(err));
+            setBusy(false);
+            return;
+        }
+        onStatusChanged(indicatorId, next);
         onClose();
     };
 
@@ -81,10 +93,22 @@ export default function IOCContextMenu({
     };
 
     const hasSelectionOptions = !!selectionText && (!!onMarkAsIOC || !!onAddAsCaseFact);
+    // Estimates for the first paint; the layout effect below replaces them with
+    // the measured size, which includes an error message when one is shown.
     const MENU_W = 220;
     const MENU_H = hasSelectionOptions ? 210 : 140;
-    const left = Math.max(0, x + MENU_W > window.innerWidth  ? x - MENU_W : x);
-    const top  = Math.max(0, y + MENU_H > window.innerHeight ? y - MENU_H : y);
+    const [size, setSize] = useState({ w: MENU_W, h: MENU_H });
+
+    useLayoutEffect(() => {
+        const el = menuRef.current;
+        if (!el) return;
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    }, [error, hasSelectionOptions, iocStatus]);
+
+    const left = Math.max(0, x + size.w > window.innerWidth  ? x - size.w : x);
+    const top  = Math.max(0, y + size.h > window.innerHeight ? y - size.h : y);
 
     const showPromote = onPromoteRequested && (iocStatus === 'detected' || iocStatus === 'confirmed');
 
@@ -108,11 +132,17 @@ export default function IOCContextMenu({
                     <button
                         key={action.next}
                         onClick={() => handleAction(action.next)}
-                        className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors"
+                        disabled={busy}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 transition-colors disabled:opacity-50"
                     >
                         {action.label}
                     </button>
                 ))}
+                {error && (
+                    <p role="alert" className="px-3 py-1.5 text-xs text-[var(--text-error)] max-w-64 break-words">
+                        {error}
+                    </p>
+                )}
                 {showPromote && STATUS_ACTIONS[iocStatus].length > 0 && (
                     <div className="border-t border-gray-700 my-1" />
                 )}

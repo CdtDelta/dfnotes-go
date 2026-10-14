@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { TagBlock, UntagBlock, GetBlockIOCs, GetAttachment, GetLinkedTasks, LinkNoteToTask, ListTasks, PromoteIOCToFact, GetFactTypes } from '../../wailsjs/go/main/App';
+import { TagBlock, UntagBlock, GetBlockIndicators, GetAttachment, GetLinkedTasks, LinkNoteToTask, ListTasks } from '../../wailsjs/go/main/App';
 import ManualIOCModal from './ManualIOCModal';
+import PromoteFactModal from './PromoteFactModal';
 import { services, models } from '../../wailsjs/go/models';
 import TagBadge from './TagBadge';
 import TagSelector from './TagSelector';
 import IOCContextMenu from './IOCContextMenu';
 import { renderMarkdown } from '../utils/markdownToHtml';
 import { applyIOCHighlightsToHtml } from '../utils/highlightIOCs';
-import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
+import type { BlockIOC, IOCStatus, IOCType } from '../utils/iocTypes';
 
 interface NoteBlockCardProps {
     block: services.NoteBlockResponse;
@@ -18,7 +19,7 @@ interface NoteBlockCardProps {
     onNavigateToTask?: (taskId: string) => void;
     iocVersion: number;
     onIocStatusChange: () => void;
-    /** Evidence item this block belongs to; used as the default evidenceItemId for manual IOCs. */
+    /** Evidence item this block belongs to; the default evidence item when promoting an indicator. Absent for Master Notes. */
     blockEvidenceItemId?: string;
     /** Called when user selects "Add as Case Fact" from the context menu. */
     onAddAsCaseFact?: (value: string) => void;
@@ -27,12 +28,17 @@ interface NoteBlockCardProps {
 interface ContextMenuState {
     x: number;
     y: number;
-    iocId: string;
+    indicatorId: string;
     iocType: IOCType;
     iocValue: string;
     iocStatus: IOCStatus;
-    evidenceItemId?: string;
     selectionText?: string;
+}
+
+interface PromoteTarget {
+    indicatorId: string;
+    iocType: IOCType;
+    iocValue: string;
 }
 
 interface SelectionMenuState {
@@ -40,34 +46,6 @@ interface SelectionMenuState {
     y: number;
     text: string;
 }
-
-const FACT_TYPES = [
-    'username', 'hostname', 'ip_address', 'mac_address', 'os_version', 'timezone',
-    'email_address', 'account_sid', 'full_name', 'phone_number', 'device_serial',
-    'url', 'file_path', 'domain', 'registry_key', 'custom',
-];
-
-function formatFactType(t: string): string {
-    const special: Record<string, string> = {
-        ip_address: 'IP Address', mac_address: 'MAC Address',
-        os_version: 'OS Version', account_sid: 'Account SID', url: 'URL',
-    };
-    return special[t] ?? t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-function iocTypeToFactType(iocType: IOCType): string {
-    const map: Partial<Record<IOCType, string>> = {
-        ipv4: 'ip_address', ipv6: 'ip_address',
-        domain: 'domain', url: 'url',
-        email: 'email_address',
-        file_path: 'file_path', file: 'file_path',
-        registry_key: 'registry_key',
-    };
-    return map[iocType] ?? 'custom';
-}
-
-const MODAL_INPUT = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
-const MODAL_LABEL = 'block text-xs text-gray-400 mb-1';
 
 export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidenceClick, onTagsChanged, onNavigateToTask, iocVersion, onIocStatusChange, blockEvidenceItemId, onAddAsCaseFact }: NoteBlockCardProps) {
     const createdDate = new Date(block.created_at).toLocaleString();
@@ -78,24 +56,13 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     const tags = block.tags || [];
 
     const containerRef = useRef<HTMLDivElement>(null);
-    const [iocs, setIocs] = useState<IOCEntry[]>([]);
+    const [iocs, setIocs] = useState<BlockIOC[]>([]);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
     const [linkedTasks, setLinkedTasks] = useState<models.Task[]>([]);
     const [showTaskPicker, setShowTaskPicker] = useState(false);
     const [caseTasks, setCaseTasks] = useState<models.Task[]>([]);
 
-    // Promote modal
-    const [showPromoteModal, setShowPromoteModal] = useState(false);
-    const [promoteIocId, setPromoteIocId] = useState('');
-    const [promoteEvidenceId, setPromoteEvidenceId] = useState('');
-    const [promoteType, setPromoteType] = useState('');
-    const [promoteLabel, setPromoteLabel] = useState('');
-    const [promoteValue, setPromoteValue] = useState('');
-    const [promoteNotes, setPromoteNotes] = useState('');
-    const [promoteError, setPromoteError] = useState('');
-    const [promoting, setPromoting] = useState(false);
-    const [factTypes, setFactTypes] = useState<string[]>(FACT_TYPES);
-    const factTypesLoadedRef = useRef(false);
+    const [promoteTarget, setPromoteTarget] = useState<PromoteTarget | null>(null);
 
     // Selection-based context menu (no IOC highlight at cursor)
     const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
@@ -104,20 +71,20 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     // Manual IOC modal
     const [showManualIOCModal, setShowManualIOCModal] = useState(false);
     const [manualIOCValue, setManualIOCValue] = useState('');
-    const [manualIOCEvidenceId, setManualIOCEvidenceId] = useState('');
 
     const fetchIOCs = useCallback(() => {
-        GetBlockIOCs(block.block_id)
+        GetBlockIndicators(block.block_id)
             .then((result) => {
-                const all = (result as IOCEntry[]) || [];
+                const all = (result as BlockIOC[]) || [];
                 // Unix file paths are detected by the backend but excluded from
                 // client-side highlighting because they produce too many false
                 // positives in rendered markdown. Only highlight Windows paths.
                 setIocs(all.filter(
-                    (ioc) => ioc.type !== 'file_path' || /^[A-Za-z]:\\/.test(ioc.value)
+                    (ioc) => ioc.type !== 'file_path' || /^[A-Za-z]:\\/.test(ioc.raw_value)
                 ));
             })
-            .catch(() => {});
+            // Keep the current highlights; a failed refresh should not blank them.
+            .catch((err) => console.error(`GetBlockIndicators failed for block ${block.block_id}:`, err));
     }, [block.block_id]);
 
     useEffect(() => {
@@ -198,20 +165,18 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         setSelectionMenu(null);
 
         if (target) {
-            const { iocId, iocType, iocValue, iocStatus } = target.dataset;
-            if (!iocId || !iocType || !iocValue || !iocStatus) {
+            const { indicatorId, occurrenceId, iocType, iocValue, iocStatus } = target.dataset;
+            if (!indicatorId || !occurrenceId || !iocType || !iocValue || !iocStatus) {
                 if (selection) setSelectionMenu({ x: e.clientX, y: e.clientY, text: selection });
                 return;
             }
-            const fullIoc = iocs.find(i => i.ioc_id === iocId);
             setContextMenu({
                 x: e.clientX,
                 y: e.clientY,
-                iocId,
+                indicatorId,
                 iocType: iocType as IOCType,
                 iocValue,
                 iocStatus: iocStatus as IOCStatus,
-                evidenceItemId: fullIoc?.evidence_item_id,
                 // If a selection spans a markdown formatting boundary, getSelection()
                 // returns correct plain text so the stored value is fine, but the
                 // highlight pipeline may not match it in the rendered HTML after
@@ -224,11 +189,11 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         }
     };
 
-    const openManualIOCModal = (value: string, evidenceItemId?: string) => {
+    // The backend derives the evidence item from the block, so none is passed.
+    const openManualIOCModal = (value: string) => {
         setContextMenu(null);
         setSelectionMenu(null);
         setManualIOCValue(value);
-        setManualIOCEvidenceId(evidenceItemId ?? blockEvidenceItemId ?? '');
         setShowManualIOCModal(true);
     };
 
@@ -240,43 +205,11 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
 
     const openPromoteModal = () => {
         if (!contextMenu) return;
-        if (!factTypesLoadedRef.current) {
-            factTypesLoadedRef.current = true;
-            GetFactTypes()
-                .then(types => { if (types?.length) setFactTypes(types); })
-                .catch(() => {});
-        }
-        setPromoteIocId(contextMenu.iocId);
-        setPromoteType(iocTypeToFactType(contextMenu.iocType));
-        setPromoteLabel('');
-        setPromoteValue(contextMenu.iocValue);
-        setPromoteEvidenceId(contextMenu.evidenceItemId ?? '');
-        setPromoteNotes('');
-        setPromoteError('');
-        setShowPromoteModal(true);
-    };
-
-    const handlePromote = async () => {
-        setPromoteError('');
-        if (!promoteLabel.trim()) { setPromoteError('Description is required.'); return; }
-        if (!promoteValue.trim()) { setPromoteError('Value is required.'); return; }
-        setPromoting(true);
-        try {
-            await PromoteIOCToFact(promoteIocId, {
-                caseId,
-                type: promoteType,
-                label: promoteLabel.trim(),
-                value: promoteValue.trim(),
-                evidenceItemId: promoteEvidenceId || undefined,
-                notes: promoteNotes.trim(),
-            } as models.CreateCaseFactRequest);
-            handleStatusChanged(promoteIocId, 'promoted');
-            setShowPromoteModal(false);
-        } catch (err: unknown) {
-            setPromoteError(String(err));
-        } finally {
-            setPromoting(false);
-        }
+        setPromoteTarget({
+            indicatorId: contextMenu.indicatorId,
+            iocType: contextMenu.iocType,
+            iocValue: contextMenu.iocValue,
+        });
     };
 
     // Evidence link clicks delegated here because the spans inside
@@ -288,10 +221,12 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         }
     };
 
-    const handleStatusChanged = (iocId: string, newStatus: IOCStatus) => {
-        // Optimistic update: setIocs triggers highlightedHtml recomputation which
-        // re-renders the spans with the new status class immediately.
-        setIocs((prev) => prev.map((ioc) => ioc.ioc_id === iocId ? { ...ioc, status: newStatus } : ioc));
+    // Called only after the backend accepted the change; IOCContextMenu keeps
+    // itself open with the error otherwise, so there is nothing to revert here.
+    const handleStatusChanged = (indicatorId: string, newStatus: IOCStatus) => {
+        // Optimistic update ahead of the refetch: status is per indicator, so
+        // every occurrence of it in this block changes class immediately.
+        setIocs((prev) => prev.map((ioc) => ioc.indicator_id === indicatorId ? { ...ioc, status: newStatus } : ioc));
         fetchIOCs();
         onIocStatusChange();
     };
@@ -375,7 +310,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                 <IOCContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    iocId={contextMenu.iocId}
+                    indicatorId={contextMenu.indicatorId}
                     iocType={contextMenu.iocType}
                     iocValue={contextMenu.iocValue}
                     iocStatus={contextMenu.iocStatus}
@@ -384,7 +319,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                     onPromoteRequested={openPromoteModal}
                     selectionText={contextMenu.selectionText}
                     onMarkAsIOC={contextMenu.selectionText
-                        ? () => openManualIOCModal(contextMenu.selectionText ?? '', contextMenu.evidenceItemId)
+                        ? () => openManualIOCModal(contextMenu.selectionText ?? '')
                         : undefined}
                     onAddAsCaseFact={contextMenu.selectionText
                         ? () => handleAddAsCaseFact(contextMenu.selectionText ?? '')
@@ -427,84 +362,21 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                 );
             })()}
 
-            {showPromoteModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-gray-200">Promote to Case Facts</h3>
-                            <button onClick={() => setShowPromoteModal(false)} className="text-gray-500 hover:text-gray-300">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={MODAL_LABEL}>Type *</label>
-                                <select value={promoteType} onChange={(e) => setPromoteType(e.target.value)} className={MODAL_INPUT}>
-                                    {factTypes.map(t => <option key={t} value={t}>{formatFactType(t)}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={MODAL_LABEL}>Evidence Item</label>
-                                <select value={promoteEvidenceId} onChange={(e) => setPromoteEvidenceId(e.target.value)} className={MODAL_INPUT}>
-                                    <option value="">Case Level</option>
-                                    {[...(evidenceItems || [])].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((item) => (
-                                        <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                            {item.item_number} - {item.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label className={MODAL_LABEL}>Description *</label>
-                            <input
-                                type="text"
-                                value={promoteLabel}
-                                onChange={(e) => setPromoteLabel(e.target.value)}
-                                placeholder="e.g. Suspect workstation IP"
-                                className={MODAL_INPUT}
-                                autoFocus
-                            />
-                        </div>
-                        <div>
-                            <label className={MODAL_LABEL}>Value *</label>
-                            <input
-                                type="text"
-                                value={promoteValue}
-                                onChange={(e) => setPromoteValue(e.target.value)}
-                                className={MODAL_INPUT}
-                            />
-                        </div>
-                        <div>
-                            <label className={MODAL_LABEL}>Notes</label>
-                            <textarea
-                                rows={2}
-                                value={promoteNotes}
-                                onChange={(e) => setPromoteNotes(e.target.value)}
-                                placeholder="Optional notes"
-                                className={MODAL_INPUT + ' resize-none'}
-                            />
-                        </div>
-                        {promoteError && <p className="text-xs text-red-400">{promoteError}</p>}
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handlePromote}
-                                disabled={promoting}
-                                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
-                            >
-                                {promoting ? 'Promoting...' : 'Promote to Case Facts'}
-                            </button>
-                            <button
-                                onClick={() => setShowPromoteModal(false)}
-                                className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {promoteTarget && (
+                <PromoteFactModal
+                    caseId={caseId}
+                    indicatorId={promoteTarget.indicatorId}
+                    iocType={promoteTarget.iocType}
+                    iocValue={promoteTarget.iocValue}
+                    evidenceItems={evidenceItems || []}
+                    defaultEvidenceItemId={blockEvidenceItemId ?? ''}
+                    onClose={() => setPromoteTarget(null)}
+                    onPromoted={() => {
+                        const { indicatorId } = promoteTarget;
+                        setPromoteTarget(null);
+                        handleStatusChanged(indicatorId, 'promoted');
+                    }}
+                />
             )}
 
             {showTaskPicker && (
@@ -548,7 +420,6 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
                 <ManualIOCModal
                     caseId={caseId}
                     blockId={block.block_id}
-                    evidenceItemId={manualIOCEvidenceId}
                     value={manualIOCValue}
                     onClose={() => setShowManualIOCModal(false)}
                     onSave={() => {
