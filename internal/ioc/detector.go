@@ -55,11 +55,26 @@ var (
 	reCVE = regexp.MustCompile(`\bCVE-\d{4}-\d{4,7}\b`)
 )
 
-// File extensions that look like TLDs but are not domain indicators.
+// File extensions that look like TLDs but are not domain indicators. Some
+// entries (sh, zip, pf, py) are real TLDs excluded on purpose: forensic notes
+// mention those file types far more often than those domains. A domain missed
+// this way can be marked manually once and propagates to later notes.
 var nonTLDExtensions = map[string]struct{}{
+	// Executables, scripts and libraries
 	"dll": {}, "exe": {}, "sys": {}, "bat": {}, "ps1": {}, "sh": {},
-	"log": {}, "txt": {}, "json": {}, "xml": {}, "csv": {},
-	"zip": {}, "tar": {}, "gz": {},
+	"msi": {}, "lnk": {}, "vbs": {}, "js": {}, "jar": {}, "py": {},
+	"pf": {},
+	// Logs, config and registry
+	"log": {}, "txt": {}, "json": {}, "xml": {}, "csv": {}, "ini": {},
+	"cfg": {}, "reg": {}, "dat": {}, "hve": {}, "evtx": {}, "evt": {},
+	"etl": {}, "plist": {}, "db": {}, "sqlite": {}, "tmp": {}, "bak": {},
+	// Archives, disk images, memory and captures
+	"zip": {}, "tar": {}, "gz": {}, "rar": {}, "iso": {}, "img": {},
+	"raw": {}, "bin": {}, "dmp": {}, "mem": {}, "vmdk": {}, "vhd": {},
+	"vhdx": {}, "pcap": {}, "pcapng": {},
+	// Documents and images
+	"doc": {}, "docx": {}, "xls": {}, "xlsx": {}, "pptx": {}, "pdf": {},
+	"jpg": {}, "png": {}, "gif": {},
 }
 
 // DetectIOCs scans plaintext content and returns deduplicated IOC matches.

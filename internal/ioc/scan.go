@@ -86,6 +86,11 @@ func standalone(content string, start, end int, t IOCType) bool {
 		if isWordRune(r) {
 			return false
 		}
+		// A domain after '@' or '/' is the host of an email address or URL.
+		// The regex detector suppresses domains inside URLs; match that.
+		if t == IOCTypeDomain && (r == '@' || r == '/') {
+			return false
+		}
 		if r == '.' && start-size > 0 {
 			prev, _ := utf8.DecodeLastRuneInString(content[:start-size])
 			if isAlnum(prev) {

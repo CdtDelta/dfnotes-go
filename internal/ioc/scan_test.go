@@ -70,6 +70,40 @@ func TestFindKnownValuesDomain(t *testing.T) {
 	}
 }
 
+func TestFindKnownValuesDomainNotInsideEmailOrURL(t *testing.T) {
+	evil := []Indicator{candidate("d1", IOCTypeDomain, "evil.com")}
+
+	for _, content := range []string{
+		"mail from bob@evil.com",
+		"fetched https://evil.com/x",
+		"fetched http://evil.com",
+	} {
+		if got := FindKnownValues(content, evil); len(got) != 0 {
+			t.Errorf("FindKnownValues(%q) = %+v, want no match", content, got)
+		}
+	}
+
+	for _, content := range []string{
+		"see evil.com today",
+		"(evil.com)",
+		`"evil.com"`,
+		"evil.com, then more",
+	} {
+		got := FindKnownValues(content, evil)
+		if want := []string{"evil.com"}; !reflect.DeepEqual(rawValues(got), want) {
+			t.Errorf("FindKnownValues(%q) = %v, want %v", content, rawValues(got), want)
+		}
+	}
+}
+
+func TestFindKnownValuesSlashRuleIsDomainOnly(t *testing.T) {
+	ntuser := []Indicator{candidate("f1", IOCTypeFile, "NTUSER.DAT")}
+	got := FindKnownValues("/home/x/NTUSER.DAT", ntuser)
+	if want := []string{"NTUSER.DAT"}; !reflect.DeepEqual(rawValues(got), want) {
+		t.Errorf("file after slash = %v, want %v", rawValues(got), want)
+	}
+}
+
 func TestFindKnownValuesURL(t *testing.T) {
 	url := []Indicator{candidate("u1", IOCTypeURL, "https://x.com/A")}
 
