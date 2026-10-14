@@ -799,8 +799,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			return
 		}
 
-		// TODO(v0.12.0 Pass 6): replace with ioc_summary.json v2 and the grouped PDF table
-		iocEntries, err := iocService.ListExportRows(ctx, caseID)
+		indicators, err := iocService.GetCaseIndicators(ctx, caseID, true)
 		if err != nil {
 			emitErr(fmt.Sprintf("get IOCs: %v", err))
 			return
@@ -845,7 +844,7 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 
 		archivePath, err := export.ExportCase(
 			ctx, req, caseData, evidenceItems, masterBlocks, evidenceBlockMap,
-			rawBlocks, iocEntries, timelineEntries, taskList, caseFacts,
+			rawBlocks, indicators, timelineEntries, taskList, caseFacts,
 			func(stage string, percent int) {
 				wailsruntime.EventsEmit(ctx, "export:progress", map[string]any{
 					"stage":   stage,
@@ -1049,8 +1048,7 @@ func (a *App) runExportCasePDF() {
 		return
 	}
 
-	// TODO(v0.12.0 Pass 6): replace with ioc_summary.json v2 and the grouped PDF table
-	iocEntries, err := a.iocService.ListExportRows(ctx, caseID)
+	indicators, err := a.iocService.GetCaseIndicators(ctx, caseID, true)
 	if err != nil {
 		showPDFError(ctx, "get IOCs: "+err.Error())
 		return
@@ -1130,7 +1128,7 @@ func (a *App) runExportCasePDF() {
 		MasterBlocks:     masterBlocks,
 		EvidenceBlockMap: evidenceBlockMap,
 		RawBlocks:        rawBlocks,
-		IOCEntries:       iocEntries,
+		Indicators:       indicators,
 		TimelineEntries:  timelineEntries,
 		Tasks:            taskList,
 		CaseFacts:        caseFacts,

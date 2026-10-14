@@ -546,80 +546,6 @@ func TestPromoteLinkedFactsRestore(t *testing.T) {
 	}
 }
 
-func TestListExportRows(t *testing.T) {
-	ctx := context.Background()
-	svc, _ := newService(t)
-	detect(t, svc, "b1", detectContent)
-	detect(t, svc, "b2", strings.ToUpper(sha256Lower))
-
-	inds := indicators(t, svc)
-	ip := byType(t, inds, ioc.IOCTypeIPv4)
-	sha := byType(t, inds, ioc.IOCTypeSHA256)
-	if err := svc.UpdateIndicatorStatus(ctx, ip.IndicatorID, "false_positive"); err != nil {
-		t.Fatalf("mark ip false positive: %v", err)
-	}
-	if err := svc.UpdateIndicatorStatus(ctx, sha.IndicatorID, "confirmed"); err != nil {
-		t.Fatalf("confirm sha256: %v", err)
-	}
-
-	rows, err := svc.ListExportRows(ctx, testCaseID)
-	if err != nil {
-		t.Fatalf("ListExportRows: %v", err)
-	}
-
-	// Expected rows follow repository indicator order, then chain order.
-	inds = indicators(t, svc)
-	var want []struct {
-		ind ioc.Indicator
-		occ ioc.Occurrence
-	}
-	for _, ind := range inds {
-		for _, o := range ind.Occurrences {
-			want = append(want, struct {
-				ind ioc.Indicator
-				occ ioc.Occurrence
-			}{ind, o})
-		}
-	}
-	if len(want) != 4 {
-		t.Fatalf("fixture has %d occurrences, want 4", len(want))
-	}
-	if len(rows) != len(want) {
-		t.Fatalf("got %d export rows, want %d (one per occurrence)", len(rows), len(want))
-	}
-
-	sawFalsePositive := false
-	for i, r := range rows {
-		w := want[i]
-		if r.IOCID != w.occ.OccurrenceID {
-			t.Errorf("row %d IOCID = %s, want occurrence id %s", i, r.IOCID, w.occ.OccurrenceID)
-		}
-		if r.Status != w.ind.Status || r.Type != w.ind.Type {
-			t.Errorf("row %d status/type = %s/%s, want indicator's %s/%s", i, r.Status, r.Type, w.ind.Status, w.ind.Type)
-		}
-		if r.CaseID != testCaseID || r.BlockID != w.occ.BlockID || r.Value != w.occ.RawValue ||
-			r.DetectionMethod != w.occ.DetectionMethod || r.CreatedAt != w.occ.CreatedAt ||
-			r.UserID != w.occ.UserID || r.Notes != nil {
-			t.Errorf("row %d = %+v, does not match occurrence %+v", i, r, w.occ)
-		}
-		if (r.ConfirmedAt == nil) != (w.ind.ConfirmedAt == nil) {
-			t.Errorf("row %d ConfirmedAt = %v, want indicator's %v", i, r.ConfirmedAt, w.ind.ConfirmedAt)
-		}
-		if r.BlockID == "b1" && (r.EvidenceItemID == nil || *r.EvidenceItemID != "ev-1") {
-			t.Errorf("row %d on b1 EvidenceItemID = %v, want ev-1", i, r.EvidenceItemID)
-		}
-		if r.Status == ioc.IOCStatusFalsePositive {
-			sawFalsePositive = true
-		}
-		if r.Type == ioc.IOCTypeSHA256 && r.Status != ioc.IOCStatusConfirmed {
-			t.Errorf("row %d sha256 status = %s, want confirmed from the indicator", i, r.Status)
-		}
-	}
-	if !sawFalsePositive {
-		t.Error("export rows left out the false positive indicator")
-	}
-}
-
 func TestUnauthenticatedSession(t *testing.T) {
 	ctx := context.Background()
 	db := newFixtureDB(t)
@@ -636,7 +562,6 @@ func TestUnauthenticatedSession(t *testing.T) {
 	_, checks["GetCaseIndicators"] = svc.GetCaseIndicators(ctx, testCaseID, true)
 	_, checks["GetBlockIndicators"] = svc.GetBlockIndicators(ctx, "b1")
 	_, checks["GetLinkedFacts"] = svc.GetLinkedFacts(ctx, "x")
-	_, checks["ListExportRows"] = svc.ListExportRows(ctx, testCaseID)
 
 	for name, err := range checks {
 		if !errors.Is(err, ioc.ErrNotAuthenticated) {

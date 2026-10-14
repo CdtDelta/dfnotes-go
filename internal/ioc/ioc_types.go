@@ -35,22 +35,3 @@ type IOCMatch struct {
 	Type  IOCType
 	Value string
 }
-
-// IOCEntry is the flat per-occurrence row the 7z and PDF exports still read,
-// built by IOCService.ListExportRows.
-//
-// TODO(v0.12.0 Pass 6): remove with the export compatibility helper
-type IOCEntry struct {
-	IOCID           string    `json:"ioc_id"`
-	CaseID          string    `json:"case_id"`
-	BlockID         string    `json:"block_id"`
-	EvidenceItemID  *string   `json:"evidence_item_id,omitempty"`
-	Type            IOCType   `json:"type"`
-	Value           string    `json:"value"`
-	Status          IOCStatus `json:"status"`
-	DetectionMethod string    `json:"detection_method"`
-	Notes           *string   `json:"notes,omitempty"`
-	CreatedAt       string    `json:"created_at"`
-	ConfirmedAt     *string   `json:"confirmed_at,omitempty"`
-	UserID          string    `json:"user_id"`
-}

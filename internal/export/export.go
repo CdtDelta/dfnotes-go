@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	"dfnotes-go/internal/ioc"
@@ -102,20 +102,6 @@ type taskLinkedBlock struct {
 	ContentHash string `json:"content_hash"`
 }
 
-type iocExport struct {
-	IOCID          string `json:"ioc_id"`
-	Type           string `json:"type"`
-	ValueRaw       string `json:"value_raw"`
-	ValueDefanged  string `json:"value_defanged"`
-	Status         string `json:"status"`
-	DetectionMethod string `json:"detection_method"`
-	BlockID        string `json:"block_id"`
-	EvidenceItemID string `json:"evidence_item_id,omitempty"`
-	Notes          string `json:"notes,omitempty"`
-	CreatedAt      string `json:"created_at"`
-	ConfirmedAt    string `json:"confirmed_at,omitempty"`
-}
-
 type caseFactExport struct {
 	FactID         string  `json:"fact_id"`
 	Type           string  `json:"type"`
@@ -128,10 +114,15 @@ type caseFactExport struct {
 	CreatedAt      string  `json:"created_at"`
 }
 
+// caseFactsFormatVersion is 2 because source_ioc_id now holds an indicator
+// id; in version 1 it held a per-occurrence ioc_entries id.
+const caseFactsFormatVersion = 2
+
 type caseFactsSummary struct {
-	ExportedAt string           `json:"exported_at"`
-	Count      int              `json:"count"`
-	Facts      []caseFactExport `json:"facts"`
+	FormatVersion int              `json:"format_version"`
+	ExportedAt    string           `json:"exported_at"`
+	Count         int              `json:"count"`
+	Facts         []caseFactExport `json:"facts"`
 }
 
 // ExportCase collects all case data, builds a directory tree, archives it with
@@ -144,7 +135,7 @@ func ExportCase(
 	masterBlocks []services.NoteBlockResponse,
 	evidenceBlockMap map[string][]services.NoteBlockResponse,
 	rawBlocks []models.NoteBlock,
-	iocEntries []ioc.IOCEntry,
+	indicators []ioc.Indicator,
 	timelineEntries []models.TimelineEntry,
 	tasks []models.Task,
 	caseFacts []models.CaseFact,
@@ -234,23 +225,16 @@ func ExportCase(
 
 	// --- ioc_summary.json ---
 	progress("writing IOC summary", 55)
-	iocExports := make([]iocExport, 0, len(iocEntries))
-	for _, e := range iocEntries {
-		iocExports = append(iocExports, iocExport{
-			IOCID:          e.IOCID,
-			Type:           string(e.Type),
-			ValueRaw:       e.Value,
-			ValueDefanged:  defangGo(e.Value, string(e.Type)),
-			Status:         string(e.Status),
-			DetectionMethod: e.DetectionMethod,
-			BlockID:        e.BlockID,
-			EvidenceItemID: func() string { if e.EvidenceItemID != nil { return *e.EvidenceItemID }; return "" }(),
-			Notes:          func() string { if e.Notes != nil { return *e.Notes }; return "" }(),
-			CreatedAt:      e.CreatedAt,
-			ConfirmedAt:    func() string { if e.ConfirmedAt != nil { return *e.ConfirmedAt }; return "" }(),
-		})
+	// Evidence item index for evidence number labels, shared with tasks.json
+	evidenceIndex := make(map[string]string, len(evidenceItems))
+	for _, item := range evidenceItems {
+		evidenceIndex[item.EvidenceItemID] = item.ItemNumber
 	}
-	if err := writeJSON(filepath.Join(tmpDir, "ioc_summary.json"), iocExports); err != nil {
+	iocSummary, missingSeq := buildIOCSummaryV2(indicators, verify.SequenceByBlock(rawBlocks), evidenceIndex, time.Now())
+	if missingSeq > 0 {
+		log.Printf("export: %d IOC occurrence(s) reference blocks not in the chain; block_sequence set to 0", missingSeq)
+	}
+	if err := writeJSON(filepath.Join(tmpDir, "ioc_summary.json"), iocSummary); err != nil {
 		return "", err
 	}
 
@@ -262,12 +246,6 @@ func ExportCase(
 
 	// --- tasks.json ---
 	progress("writing tasks", 68)
-	// Build evidence item index for evidence number labels
-	evidenceIndex := make(map[string]string, len(evidenceItems))
-	for _, item := range evidenceItems {
-		evidenceIndex[item.EvidenceItemID] = item.ItemNumber
-	}
-
 	taskExports := make([]taskExport, 0, len(tasks))
 	for _, t := range tasks {
 		evLabel := ""
@@ -334,9 +312,10 @@ func ExportCase(
 		})
 	}
 	factsEnvelope := caseFactsSummary{
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		Count:      len(factExports),
-		Facts:      factExports,
+		FormatVersion: caseFactsFormatVersion,
+		ExportedAt:    time.Now().UTC().Format(time.RFC3339),
+		Count:         len(factExports),
+		Facts:         factExports,
 	}
 	if err := writeJSON(filepath.Join(tmpDir, "case_facts.json"), factsEnvelope); err != nil {
 		return "", err
@@ -499,10 +478,10 @@ CONTENTS
 case_metadata.json  - Case metadata in plaintext JSON.
 master_notes/       - Committed note blocks from Master Notes tab (markdown).
 evidence/           - Per-evidence-item metadata and note blocks.
-ioc_summary.json    - All IOC entries with status and source references.
+ioc_summary.json    - Case-wide IOC indicators with status and every occurrence (format_version 2).
 timeline.json       - All timeline entries.
 tasks.json          - All investigation tasks with status and linked block references.
-case_facts.json     - All case facts (informational investigation artifacts).
+case_facts.json     - All case facts (format_version 2; source_ioc_id refers to an indicator).
 chain_verification.json - Full hash chain data for independent verification.
 
 VERIFICATION
@@ -561,34 +540,4 @@ func sanitizeTS(ts string) string {
 
 func sanitizeDirName(s string) string {
 	return reSanitizeDirName.ReplaceAllString(s, "_")
-}
-
-func defangGo(value, iocType string) string {
-	switch iocType {
-	case "ipv4":
-		return strings.ReplaceAll(value, ".", "[.]")
-	case "ipv6":
-		return strings.ReplaceAll(value, ":", "[:]")
-	case "domain":
-		idx := strings.LastIndex(value, ".")
-		if idx >= 0 {
-			return value[:idx] + "[.]" + value[idx+1:]
-		}
-		return value
-	case "url":
-		v := strings.ReplaceAll(value, ".", "[.]")
-		v = strings.Replace(v, "https://", "hxxps://", 1)
-		v = strings.Replace(v, "http://", "hxxp://", 1)
-		v = strings.Replace(v, "ftp://", "fxp://", 1)
-		return v
-	case "email":
-		at := strings.Index(value, "@")
-		if at < 0 {
-			return value
-		}
-		domain := strings.ReplaceAll(value[at+1:], ".", "[.]")
-		return value[:at] + "[@]" + domain
-	default:
-		return value
-	}
 }

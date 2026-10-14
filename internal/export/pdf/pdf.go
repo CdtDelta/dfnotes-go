@@ -34,7 +34,7 @@ type PDFRequest struct {
 	MasterBlocks     []services.NoteBlockResponse
 	EvidenceBlockMap map[string][]services.NoteBlockResponse
 	RawBlocks        []models.NoteBlock
-	IOCEntries       []ioc.IOCEntry
+	Indicators       []ioc.Indicator
 	TimelineEntries  []models.TimelineEntry
 	Tasks            []models.Task
 	CaseFacts        []models.CaseFact
@@ -133,7 +133,7 @@ func GenerateCasePDF(req PDFRequest) ([]byte, error) {
 	link, pg = BuildEvidenceSection(p, req.EvidenceItems, req.EvidenceBlockMap, rawBlockMap, evidenceIndex, verifyMap)
 	addSection("Evidence Items", link, pg)
 
-	link, pg = BuildIOCSection(p, req.IOCEntries)
+	link, pg = BuildIOCSection(p, req.Indicators, verify.SequenceByBlock(req.RawBlocks), evidenceIndex)
 	addSection("IOC Summary", link, pg)
 
 	link, pg = BuildTimelineSection(p, req.TimelineEntries, evidenceIndex)

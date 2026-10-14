@@ -2,7 +2,9 @@ package pdf
 
 import (
 	"fmt"
+	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -383,85 +385,157 @@ func BuildEvidenceSection(p *fpdf.Fpdf, evidenceItems []services.EvidenceRespons
 	return link, startPage
 }
 
-// BuildIOCSection renders the IOC Summary section.
-func BuildIOCSection(p *fpdf.Fpdf, iocEntries []ioc.IOCEntry) (int, int) {
+var (
+	iocTableHeaders = []string{"Type", "Value (Defanged)", "Status", "Evidence", "Blocks"}
+	// Sums to bodyWidth (180). DrawTableMonospace wraps every cell through
+	// MultiCell, so long Evidence and Blocks lists grow the row instead of
+	// being cut off.
+	iocTableWidths = []float64{20, 70, 24, 30, 36}
+)
+
+// BuildIOCSection renders the IOC Summary section, one row per indicator.
+// Returns the TOC link id and the section's start page.
+func BuildIOCSection(p *fpdf.Fpdf, indicators []ioc.Indicator, seqByBlock map[string]int, evidenceIndex map[string]string) (int, int) {
 	p.AddPage()
 	startPage := p.PageNo()
 	link := sectionHeading(p, "IOC Summary", 0)
 
-	var confirmed, dismissed []ioc.IOCEntry
-	for _, e := range iocEntries {
-		if e.Status == ioc.IOCStatusFalsePositive {
-			dismissed = append(dismissed, e)
-		} else {
-			confirmed = append(confirmed, e)
-		}
+	groups := buildIOCTableRows(indicators, seqByBlock, evidenceIndex)
+	if groups.MissingBlocks > 0 {
+		log.Printf("PDF export: %d IOC occurrence(s) reference blocks not in the chain; left out of the Blocks column", groups.MissingBlocks)
 	}
 
-	subHeading(p, "Confirmed and Detected IOCs")
-	if len(confirmed) == 0 {
-		p.SetFont("DejaVu", "", fontSizeBody)
-		p.SetTextColor(80, 80, 80)
-		p.Cell(0, lineHeight, "No confirmed or detected IOCs.")
-		p.Ln(-1)
-		p.Ln(4)
-	} else {
-		rows := iocTableRows(confirmed)
-		DrawTableMonospace(p,
-			[]string{"Type", "Value (Defanged)", "Status", "Source Block ID", "Detected At"},
-			[]float64{22, 60, 20, 50, 28},
-			rows,
-			map[string]CellStyle{},
-		)
-	}
-
-	subHeading(p, "Dismissed (False Positives)")
-	if len(dismissed) == 0 {
-		p.SetFont("DejaVu", "", fontSizeBody)
-		p.SetTextColor(80, 80, 80)
-		p.Cell(0, lineHeight, "No dismissed IOCs.")
-		p.Ln(-1)
-		p.Ln(4)
-	} else {
-		// Gray text for dismissed rows
-		styles := make(map[string]CellStyle)
-		for i := range dismissed {
-			for col := 0; col < 5; col++ {
-				styles[cellKey(i, col)] = CellStyle{120, 120, 120}
-			}
-		}
-		rows := iocTableRows(dismissed)
-		DrawTableMonospace(p,
-			[]string{"Type", "Value (Defanged)", "Status", "Source Block ID", "Detected At"},
-			[]float64{22, 60, 20, 50, 28},
-			rows,
-			styles,
-		)
-	}
+	drawIOCTable(p, "Confirmed and Detected IOCs", "No confirmed or detected IOCs.", groups.Active, false)
+	drawIOCTable(p, "Promoted to Case Facts", "No IOCs promoted to case facts.", groups.Promoted, false)
+	drawIOCTable(p, "Dismissed (False Positives)", "No dismissed IOCs.", groups.Dismissed, true)
 	return link, startPage
 }
 
-func iocTableRows(entries []ioc.IOCEntry) [][]string {
-	rows := make([][]string, len(entries))
-	for i, e := range entries {
-		ca := ""
-		if e.ConfirmedAt != nil {
-			ca = *e.ConfirmedAt
-		}
-		rows[i] = []string{
-			string(e.Type),
-			defangValue(e.Value, string(e.Type)),
-			string(e.Status),
-			e.BlockID,
-			func() string {
-				if ca != "" {
-					return ca
-				}
-				return e.CreatedAt
-			}(),
+func drawIOCTable(p *fpdf.Fpdf, title, emptyText string, rows [][]string, gray bool) {
+	subHeading(p, title)
+	if len(rows) == 0 {
+		p.SetFont("DejaVu", "", fontSizeBody)
+		p.SetTextColor(80, 80, 80)
+		p.Cell(0, lineHeight, emptyText)
+		p.Ln(-1)
+		p.Ln(4)
+		return
+	}
+	styles := make(map[string]CellStyle)
+	if gray {
+		for i := range rows {
+			for col := range iocTableHeaders {
+				styles[cellKey(i, col)] = CellStyle{120, 120, 120}
+			}
 		}
 	}
-	return rows
+	DrawTableMonospace(p, iocTableHeaders, iocTableWidths, rows, styles)
+}
+
+// iocTableGroups holds the rows for the three IOC sub-tables.
+type iocTableGroups struct {
+	Active    [][]string // confirmed and detected
+	Promoted  [][]string
+	Dismissed [][]string
+	// MissingBlocks counts occurrences whose block is not in seqByBlock.
+	MissingBlocks int
+}
+
+// buildIOCTableRows splits indicators by status and builds one row per
+// indicator. Active rows put confirmed before detected; every table is then
+// ordered by indicator created_at ascending.
+func buildIOCTableRows(indicators []ioc.Indicator, seqByBlock map[string]int, evidenceIndex map[string]string) iocTableGroups {
+	var active, promoted, dismissed []ioc.Indicator
+	for _, ind := range indicators {
+		switch ind.Status {
+		case ioc.IOCStatusPromoted:
+			promoted = append(promoted, ind)
+		case ioc.IOCStatusFalsePositive:
+			dismissed = append(dismissed, ind)
+		default:
+			active = append(active, ind)
+		}
+	}
+
+	statusRank := func(s ioc.IOCStatus) int {
+		if s == ioc.IOCStatusConfirmed {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(active, func(i, j int) bool {
+		ri, rj := statusRank(active[i].Status), statusRank(active[j].Status)
+		if ri != rj {
+			return ri < rj
+		}
+		return active[i].CreatedAt < active[j].CreatedAt
+	})
+	byCreated := func(s []ioc.Indicator) {
+		sort.SliceStable(s, func(i, j int) bool { return s[i].CreatedAt < s[j].CreatedAt })
+	}
+	byCreated(promoted)
+	byCreated(dismissed)
+
+	var g iocTableGroups
+	toRows := func(s []ioc.Indicator) [][]string {
+		rows := make([][]string, 0, len(s))
+		for _, ind := range s {
+			evidence, blocks, missing := iocPlaces(ind.Occurrences, seqByBlock, evidenceIndex)
+			g.MissingBlocks += missing
+			rows = append(rows, []string{
+				string(ind.Type),
+				ioc.Defang(ind.Value, ind.Type),
+				string(ind.Status),
+				evidence,
+				blocks,
+			})
+		}
+		return rows
+	}
+	g.Active = toRows(active)
+	g.Promoted = toRows(promoted)
+	g.Dismissed = toRows(dismissed)
+	return g
+}
+
+// iocPlaces returns the Evidence cell (distinct places in order of first
+// appearance, "Master" for Master Notes) and the Blocks cell (distinct chain
+// sequence numbers, ascending), plus how many occurrences had no sequence.
+func iocPlaces(occs []ioc.Occurrence, seqByBlock map[string]int, evidenceIndex map[string]string) (string, string, int) {
+	var places []string
+	seenPlace := make(map[string]bool)
+	var seqs []int
+	seenSeq := make(map[int]bool)
+	missing := 0
+	for _, o := range occs {
+		place := "Master"
+		if o.EvidenceItemID != nil {
+			place = *o.EvidenceItemID
+			if n, ok := evidenceIndex[place]; ok {
+				place = n
+			}
+		}
+		if !seenPlace[place] {
+			seenPlace[place] = true
+			places = append(places, place)
+		}
+
+		seq, ok := seqByBlock[o.BlockID]
+		if !ok {
+			missing++
+			continue
+		}
+		if !seenSeq[seq] {
+			seenSeq[seq] = true
+			seqs = append(seqs, seq)
+		}
+	}
+	sort.Ints(seqs)
+	nums := make([]string, len(seqs))
+	for i, n := range seqs {
+		nums[i] = strconv.Itoa(n)
+	}
+	return strings.Join(places, ", "), strings.Join(nums, ", "), missing
 }
 
 // BuildTimelineSection renders the Timeline section as record blocks.
@@ -961,36 +1035,5 @@ func contentTypeToFPDF(ct string) string {
 		return "GIF"
 	default:
 		return ""
-	}
-}
-
-// defangValue applies defanging rules to IOC values.
-func defangValue(value, iocType string) string {
-	switch iocType {
-	case "ipv4":
-		return strings.ReplaceAll(value, ".", "[.]")
-	case "ipv6":
-		return strings.ReplaceAll(value, ":", "[:]")
-	case "domain":
-		idx := strings.LastIndex(value, ".")
-		if idx >= 0 {
-			return value[:idx] + "[.]" + value[idx+1:]
-		}
-		return value
-	case "url":
-		v := strings.ReplaceAll(value, ".", "[.]")
-		v = strings.Replace(v, "https://", "hxxps://", 1)
-		v = strings.Replace(v, "http://", "hxxp://", 1)
-		v = strings.Replace(v, "ftp://", "fxp://", 1)
-		return v
-	case "email":
-		at := strings.Index(value, "@")
-		if at < 0 {
-			return value
-		}
-		domain := strings.ReplaceAll(value[at+1:], ".", "[.]")
-		return value[:at] + "[@]" + domain
-	default:
-		return value
 	}
 }
