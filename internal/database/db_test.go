@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	iocpkg "dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 )
 
@@ -488,94 +487,8 @@ func TestNoteBlockWithEvidence(t *testing.T) {
 	}
 }
 
-func TestIOCRepoCRUD(t *testing.T) {
-	t.Skip("ioc_entries replaced by indicators in migration 016; rewritten in v0.12.0 Pass 3")
-	db := setupTestDB(t)
-	ctx := context.Background()
-	user := createTestUser(t, db)
-	c := createTestCase(t, db, user.UserID)
-
-	blockRepo := NewNoteBlockRepo(db)
-	now := time.Now().UTC().Truncate(time.Second)
-	block := &models.NoteBlock{
-		BlockID:       "block-ioc-1",
-		CaseID:        c.CaseID,
-		ContentHash:   "hash-ioc",
-		PrevHash:      "genesis",
-		Signature:     []byte("sig"),
-		EncryptedBody: []byte("body"),
-		AuthorID:      user.UserID,
-		CreatedAt:     now,
-	}
-	if err := blockRepo.Create(ctx, block); err != nil {
-		t.Fatalf("Create block: %v", err)
-	}
-
-	repo := NewIOCRepo(db)
-	createdAt := now.UTC().Format("2006-01-02T15:04:05Z")
-
-	entry := &iocpkg.IOCEntry{
-		IOCID:           "ioc-1",
-		CaseID:          c.CaseID,
-		BlockID:         block.BlockID,
-		Type:            iocpkg.IOCTypeIPv4,
-		Value:           "192.168.1.100",
-		Status:          iocpkg.IOCStatusDetected,
-		DetectionMethod: "auto",
-		CreatedAt:       createdAt,
-		UserID:          user.UserID,
-	}
-	if err := repo.Create(ctx, entry); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	got, err := repo.GetByID(ctx, "ioc-1")
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if got.Value != "192.168.1.100" {
-		t.Fatalf("expected IP, got %q", got.Value)
-	}
-	if got.Status != iocpkg.IOCStatusDetected {
-		t.Fatalf("expected detected status, got %q", got.Status)
-	}
-
-	entries, err := repo.ListByCase(ctx, c.CaseID, false)
-	if err != nil {
-		t.Fatalf("ListByCase: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-
-	if err := repo.UpdateStatus(ctx, "ioc-1", iocpkg.IOCStatusConfirmed, func() *string { s := createdAt; return &s }()); err != nil {
-		t.Fatalf("UpdateStatus: %v", err)
-	}
-
-	got, _ = repo.GetByID(ctx, "ioc-1")
-	if got.Status != iocpkg.IOCStatusConfirmed {
-		t.Fatalf("expected confirmed, got %q", got.Status)
-	}
-	if got.ConfirmedAt == nil {
-		t.Fatal("expected confirmed_at to be set")
-	}
-
-	byBlock, err := repo.GetByBlock(ctx, block.BlockID)
-	if err != nil {
-		t.Fatalf("GetByBlock: %v", err)
-	}
-	if len(byBlock) != 1 {
-		t.Fatalf("expected 1 block IOC, got %d", len(byBlock))
-	}
-
-	existing, err := repo.GetExistingByBlock(ctx, block.BlockID)
-	if err != nil {
-		t.Fatalf("GetExistingByBlock: %v", err)
-	}
-	if _, ok := existing["ipv4:192.168.1.100"]; !ok {
-		t.Fatal("expected ipv4:192.168.1.100 in existing set")
-	}
-}
+// IOC storage tests live in indicator_repo_test.go. ioc_entries was replaced
+// by indicators and ioc_occurrences in migration 016.
 
 func TestTimelineRepoCRUD(t *testing.T) {
 	db := setupTestDB(t)

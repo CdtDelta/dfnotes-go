@@ -17,19 +17,7 @@ func NewAuditRepo(db *DB) *AuditRepo {
 }
 
 func (r *AuditRepo) Create(ctx context.Context, entry *models.AuditLog) error {
-	var details *string
-	if entry.Details != nil {
-		s := string(entry.Details)
-		details = &s
-	}
-
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO audit_logs (log_id, case_id, user_id, action, entity_type, entity_id, details, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		entry.LogID, nullString(entry.CaseID), entry.UserID, string(entry.Action),
-		entry.EntityType, entry.EntityID, details, FormatTime(entry.CreatedAt),
-	)
-	return wrapError(err)
+	return insertAuditLog(ctx, r.db, entry)
 }
 
 func (r *AuditRepo) ListByCase(ctx context.Context, caseID string) ([]models.AuditLog, error) {

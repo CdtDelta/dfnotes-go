@@ -81,6 +81,8 @@ func sha256File(path string) (string, error) {
 
 // ValidateSchema opens the file at path and checks for the presence of core
 // dfnotes-go tables. Returns an error if the file is not a valid dfnotes-go database.
+// It runs before migrations, so it only checks tables that exist in every
+// schema version; IOC tables changed in migration 016 and are left out.
 func ValidateSchema(path string) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -88,7 +90,7 @@ func ValidateSchema(path string) error {
 	}
 	defer db.Close()
 
-	required := []string{"users", "cases", "note_blocks", "evidence_items", "ioc_entries"}
+	required := []string{"users", "cases", "note_blocks", "evidence_items"}
 	for _, table := range required {
 		var name string
 		err := db.QueryRow(

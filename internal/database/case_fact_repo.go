@@ -16,25 +16,7 @@ func NewCaseFactRepo(db *DB) *CaseFactRepo {
 }
 
 func (r *CaseFactRepo) Create(ctx context.Context, fact models.CaseFact) error {
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO case_facts
-		    (fact_id, case_id, evidence_item_id, type, label, value,
-		     source_ioc_id, source_block_id, notes, created_at, updated_at, user_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		fact.FactID,
-		fact.CaseID,
-		nullString(fact.EvidenceItemID),
-		fact.Type,
-		fact.Label,
-		fact.Value,
-		nullString(fact.SourceIOCID),
-		nullString(fact.SourceBlockID),
-		fact.Notes,
-		fact.CreatedAt,
-		fact.UpdatedAt,
-		fact.UserID,
-	)
-	return wrapError(err)
+	return insertCaseFact(ctx, r.db, &fact)
 }
 
 func (r *CaseFactRepo) GetByCase(ctx context.Context, caseID string) ([]models.CaseFact, error) {
@@ -46,7 +28,7 @@ func (r *CaseFactRepo) GetByCase(ctx context.Context, caseID string) ([]models.C
 		return nil, wrapError(err)
 	}
 	defer rows.Close()
-	return r.scanFacts(rows)
+	return scanCaseFacts(rows)
 }
 
 func (r *CaseFactRepo) GetByID(ctx context.Context, factID string) (models.CaseFact, error) {
@@ -54,7 +36,7 @@ func (r *CaseFactRepo) GetByID(ctx context.Context, factID string) (models.CaseF
 		`SELECT fact_id, case_id, evidence_item_id, type, label, value,
 		        source_ioc_id, source_block_id, notes, created_at, updated_at, user_id
 		 FROM case_facts WHERE fact_id = ?`, factID)
-	fact, err := r.scanFact(row)
+	fact, err := scanCaseFact(row)
 	if err != nil {
 		return models.CaseFact{}, err
 	}
@@ -83,18 +65,13 @@ func (r *CaseFactRepo) Update(ctx context.Context, fact models.CaseFact) error {
 }
 
 func (r *CaseFactRepo) Delete(ctx context.Context, factID string) error {
-	result, err := r.db.ExecContext(ctx,
-		`DELETE FROM case_facts WHERE fact_id = ?`, factID)
-	if err != nil {
-		return wrapError(err)
-	}
-	return checkRowsAffected(result)
+	return deleteCaseFact(ctx, r.db, factID)
 }
 
-func (r *CaseFactRepo) scanFacts(rows *sql.Rows) ([]models.CaseFact, error) {
+func scanCaseFacts(rows *sql.Rows) ([]models.CaseFact, error) {
 	var facts []models.CaseFact
 	for rows.Next() {
-		fact, err := r.scanFact(rows)
+		fact, err := scanCaseFact(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +83,7 @@ func (r *CaseFactRepo) scanFacts(rows *sql.Rows) ([]models.CaseFact, error) {
 	return facts, rows.Err()
 }
 
-func (r *CaseFactRepo) scanFact(s scanner) (*models.CaseFact, error) {
+func scanCaseFact(s scanner) (*models.CaseFact, error) {
 	var fact models.CaseFact
 	var evidenceItemID, sourceIOCID, sourceBlockID sql.NullString
 

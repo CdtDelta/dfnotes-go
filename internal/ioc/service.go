@@ -2,187 +2,297 @@ package ioc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"dfnotes-go/internal/models"
-
-	"github.com/google/uuid"
 )
 
-// CaseFactCreator is satisfied by *services.CaseFactService. Defined here to
-// avoid importing the services package (which would create a circular dependency).
-type CaseFactCreator interface {
-	CreateFact(ctx context.Context, userID string, req models.CreateCaseFactRequest) (models.CaseFact, error)
+// Session is satisfied by *services.Session. Defined here so the ioc package
+// does not import services.
+type Session interface {
+	IsAuthenticated() bool
+	User() *models.UserIdentity
 }
 
-// AuditWriter is satisfied by *database.AuditRepo.
-type AuditWriter interface {
-	Create(ctx context.Context, entry *models.AuditLog) error
+// ErrNotAuthenticated is returned when no user session is active. The
+// message matches the one the services package returns.
+var ErrNotAuthenticated = errors.New("not authenticated")
+
+// userError carries a plain-English message that the frontend shows as is,
+// while keeping the repository sentinel matchable with errors.Is.
+type userError struct {
+	msg string
+	err error
+}
+
+func (e *userError) Error() string { return e.msg }
+func (e *userError) Unwrap() error { return e.err }
+
+// operation selects the wording for errors whose meaning depends on what
+// the user was trying to do.
+type operation int
+
+const (
+	opRead operation = iota
+	opStatus
+	opType
+	opMark
+	opPromote
+	opRestore
+)
+
+const (
+	msgNotFound      = "This indicator no longer exists. Refresh the IOC list and try again."
+	msgLockedStatus  = "This indicator is promoted to a case fact. Restore it before changing its status."
+	msgLockedType    = "This indicator is promoted to a case fact. Restore it before changing its type."
+	msgInvalidType   = "That is not a valid IOC type."
+	msgStatusValues  = "Status must be detected, confirmed, or false positive."
+	msgPromoteFrom   = "Only a detected or confirmed indicator can be promoted to a case fact."
+	msgRestoreFrom   = "Only a promoted indicator can be restored."
+	msgInvalidChange = "This status change is not allowed."
+)
+
+// friendlyError replaces a repository sentinel with a plain-English message.
+// Errors that are not sentinels pass through unchanged.
+func friendlyError(err error, op operation) error {
+	if err == nil {
+		return nil
+	}
+	var msg string
+	switch {
+	case errors.Is(err, ErrIndicatorNotFound):
+		msg = msgNotFound
+	case errors.Is(err, ErrPromotedLocked):
+		msg = msgLockedStatus
+		if op == opType {
+			msg = msgLockedType
+		}
+	case errors.Is(err, ErrInvalidType):
+		msg = msgInvalidType
+	case errors.Is(err, ErrInvalidStatusTransition):
+		switch op {
+		case opStatus:
+			msg = msgStatusValues
+		case opPromote:
+			msg = msgPromoteFrom
+		case opRestore:
+			msg = msgRestoreFrom
+		default:
+			msg = msgInvalidChange
+		}
+	default:
+		return err
+	}
+	return &userError{msg: msg, err: err}
 }
 
 type IOCService struct {
-	repo            IOCRepository
-	caseFactCreator CaseFactCreator
-	auditWriter     AuditWriter
+	repo    IndicatorRepository
+	session Session
 }
 
-func NewIOCService(repo IOCRepository) *IOCService {
-	return &IOCService{repo: repo}
+func NewIOCService(repo IndicatorRepository, session Session) *IOCService {
+	return &IOCService{repo: repo, session: session}
 }
 
-// WithCaseFactSupport wires in the dependencies needed for PromoteToFact.
-func (s *IOCService) WithCaseFactSupport(creator CaseFactCreator, audit AuditWriter) *IOCService {
-	s.caseFactCreator = creator
-	s.auditWriter = audit
-	return s
-}
-
-// DetectAndStore scans plaintext content and persists any discovered IOCs.
-// Called after a note block is committed. This is best-effort: callers must
-// not propagate returned errors as commit failures.
-func (s *IOCService) DetectAndStore(
-	ctx context.Context,
-	caseID, blockID string,
-	evidenceItemID *string,
-	content, userID string,
-) error {
-	matches := DetectIOCs(content)
-	if len(matches) == 0 {
-		return nil
+// currentUserID returns the authenticated user's id, or ErrNotAuthenticated.
+// User is checked for nil as well because the session can be cleared between
+// the two calls.
+func (s *IOCService) currentUserID() (string, error) {
+	if !s.session.IsAuthenticated() {
+		return "", ErrNotAuthenticated
 	}
-
-	existing, err := s.repo.GetExistingByBlock(ctx, blockID)
-	if err != nil {
-		return fmt.Errorf("fetch existing iocs block=%s: %w", blockID, err)
+	u := s.session.User()
+	if u == nil {
+		return "", ErrNotAuthenticated
 	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	var firstErr error
-
-	for _, m := range matches {
-		if _, dup := existing[string(m.Type)+":"+m.Value]; dup {
-			continue
-		}
-
-		entry := &IOCEntry{
-			IOCID:           uuid.New().String(),
-			CaseID:          caseID,
-			BlockID:         blockID,
-			EvidenceItemID:  evidenceItemID,
-			Type:            m.Type,
-			Value:           m.Value,
-			Status:          IOCStatusDetected,
-			DetectionMethod: DetectionMethodAuto,
-			CreatedAt:       now,
-			UserID:          userID,
-		}
-		if err := s.repo.Create(ctx, entry); err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("create ioc block=%s value=%s: %w", blockID, m.Value, err)
-			}
-		}
-	}
-
-	return firstErr
+	return u.UserID, nil
 }
 
-// GetCaseIOCs returns IOC entries for a case.
-// When includeAll is false, false_positive records are excluded.
-func (s *IOCService) GetCaseIOCs(ctx context.Context, caseID string, includeAll bool) ([]IOCEntry, error) {
-	return s.repo.ListByCase(ctx, caseID, includeAll)
-}
-
-// UpdateIOCStatus changes the status of an IOC and manages confirmed_at.
-func (s *IOCService) UpdateIOCStatus(ctx context.Context, iocID, status string) error {
-	switch IOCStatus(status) {
-	case IOCStatusDetected, IOCStatusConfirmed, IOCStatusFalsePositive:
-	default:
-		return errors.New("invalid status: must be detected, confirmed, or false_positive")
-	}
-
-	var confirmedAt *string
-	if IOCStatus(status) == IOCStatusConfirmed {
-		t := time.Now().UTC().Format(time.RFC3339)
-		confirmedAt = &t
-	}
-
-	return s.repo.UpdateStatus(ctx, iocID, IOCStatus(status), confirmedAt)
-}
-
-// UpdateIOCType changes the type of an IOC and resets its status to detected.
-func (s *IOCService) UpdateIOCType(ctx context.Context, iocID, iocType string) error {
-	switch IOCType(iocType) {
-	case IOCTypeIPv4, IOCTypeIPv6, IOCTypeDomain, IOCTypeURL, IOCTypeEmail,
-		IOCTypeMD5, IOCTypeSHA1, IOCTypeSHA256, IOCTypeFilePath, IOCTypeFile, IOCTypeRegistryKey, IOCTypeCVE:
-	default:
-		return errors.New("invalid type")
-	}
-	return s.repo.UpdateType(ctx, iocID, IOCType(iocType))
-}
-
-// GetBlockIOCs returns all IOC entries for a specific committed block.
-func (s *IOCService) GetBlockIOCs(ctx context.Context, blockID string) ([]IOCEntry, error) {
-	return s.repo.GetByBlock(ctx, blockID)
-}
-
-// CreateManualIOC stores a user-supplied IOC with detection_method=manual and
-// status=confirmed. Value is stored raw with no defanging or detection pipeline.
-// Returns a descriptive error if (block_id, type, value) already exists.
-func (s *IOCService) CreateManualIOC(ctx context.Context, caseID, blockID string, evidenceItemID *string, iocType, value, userID string) error {
-	iocID := uuid.New().String()
-	err := s.repo.InsertManualIOC(ctx, iocID, caseID, blockID, evidenceItemID, IOCType(iocType), value, userID)
-	if errors.Is(err, models.ErrDuplicateKey) {
-		return fmt.Errorf("IOC with type %q and value %q already exists in this block", iocType, value)
-	}
+func (s *IOCService) requireAuth() error {
+	_, err := s.currentUserID()
 	return err
 }
 
-// PromoteToFact moves an IOC into Case Facts: creates a case fact record, sets
-// the IOC status to promoted, and audit-logs the status change.
-func (s *IOCService) PromoteToFact(ctx context.Context, userID string, iocID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
-	if s.caseFactCreator == nil {
-		return models.CaseFact{}, errors.New("case fact support not initialized")
+// DetectAndStore scans plaintext content and records an auto occurrence for
+// every match. Called after a note block is committed. This is best-effort:
+// callers must not propagate returned errors as commit failures. userID is
+// the block author, passed in by the caller.
+func (s *IOCService) DetectAndStore(ctx context.Context, caseID, blockID, content, userID string) error {
+	if err := s.requireAuth(); err != nil {
+		return err
 	}
 
-	entry, err := s.repo.GetByID(ctx, iocID)
-	if err != nil {
-		return models.CaseFact{}, fmt.Errorf("get ioc: %w", err)
-	}
-
-	// Always set SourceIOCID from the ioc being promoted.
-	req.SourceIOCID = &iocID
-	req.CaseID = entry.CaseID
-
-	fact, err := s.caseFactCreator.CreateFact(ctx, userID, req)
-	if err != nil {
-		return models.CaseFact{}, fmt.Errorf("create case fact: %w", err)
-	}
-
-	if err := s.repo.UpdateStatus(ctx, iocID, IOCStatusPromoted, nil); err != nil {
-		return models.CaseFact{}, fmt.Errorf("update ioc status: %w", err)
-	}
-
-	if s.auditWriter != nil {
-		caseID := entry.CaseID
-		details, _ := json.Marshal(map[string]string{
-			"ioc_id":  iocID,
-			"status":  "promoted",
-			"fact_id": fact.FactID,
+	var firstErr error
+	for _, m := range DetectIOCs(content) {
+		_, err := s.repo.UpsertOccurrence(ctx, UpsertOccurrenceInput{
+			CaseID:          caseID,
+			BlockID:         blockID,
+			Type:            m.Type,
+			RawValue:        m.Value,
+			DetectionMethod: DetectionMethodAuto,
+			UserID:          userID,
 		})
-		s.auditWriter.Create(ctx, &models.AuditLog{
-			LogID:      uuid.New().String(),
-			CaseID:     &caseID,
-			UserID:     userID,
-			Action:     models.AuditActionUpdate,
-			EntityType: "ioc_entry",
-			EntityID:   iocID,
-			Details:    details,
-			CreatedAt:  time.Now().UTC(),
-		})
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("store ioc block=%s type=%s: %w", blockID, m.Type, err)
+		}
 	}
+	return firstErr
+}
 
+// GetCaseIndicators returns the case's indicators with their occurrences.
+// False positives are left out unless includeFalsePositives is set.
+func (s *IOCService) GetCaseIndicators(ctx context.Context, caseID string, includeFalsePositives bool) ([]Indicator, error) {
+	if err := s.requireAuth(); err != nil {
+		return nil, err
+	}
+	indicators, err := s.repo.ListIndicatorsByCase(ctx, caseID, includeFalsePositives)
+	return indicators, friendlyError(err, opRead)
+}
+
+// GetBlockIndicators returns every occurrence in a committed block with the
+// indicator's current type and status.
+func (s *IOCService) GetBlockIndicators(ctx context.Context, blockID string) ([]BlockIOC, error) {
+	if err := s.requireAuth(); err != nil {
+		return nil, err
+	}
+	iocs, err := s.repo.ListBlockIOCs(ctx, blockID)
+	return iocs, friendlyError(err, opRead)
+}
+
+// UpdateIndicatorStatus sets an indicator to detected, confirmed or
+// false_positive. Promotion and restore have their own methods.
+func (s *IOCService) UpdateIndicatorStatus(ctx context.Context, indicatorID, status string) error {
+	userID, err := s.currentUserID()
+	if err != nil {
+		return err
+	}
+	st := IOCStatus(status)
+	switch st {
+	case IOCStatusDetected, IOCStatusConfirmed, IOCStatusFalsePositive:
+	default:
+		return friendlyError(fmt.Errorf("%w: cannot set status %q", ErrInvalidStatusTransition, status), opStatus)
+	}
+	return friendlyError(s.repo.UpdateIndicatorStatus(ctx, indicatorID, st, userID), opStatus)
+}
+
+// UpdateIndicatorType changes an indicator's type. If another indicator
+// already holds the new type and value, the first call reports a Collision
+// and changes nothing; calling again with confirmMerge merges the two.
+func (s *IOCService) UpdateIndicatorType(ctx context.Context, indicatorID, iocType string, confirmMerge bool) (TypeChangeResult, error) {
+	userID, err := s.currentUserID()
+	if err != nil {
+		return TypeChangeResult{}, err
+	}
+	t := IOCType(iocType)
+	if !ValidType(t) {
+		return TypeChangeResult{}, friendlyError(fmt.Errorf("%w: %q", ErrInvalidType, iocType), opType)
+	}
+	res, err := s.repo.UpdateIndicatorType(ctx, indicatorID, t, confirmMerge, userID)
+	if err != nil {
+		return TypeChangeResult{}, friendlyError(err, opType)
+	}
+	return res, nil
+}
+
+// MarkManualIOC records a value the analyst selected by hand. A new value
+// becomes a confirmed indicator. A value already tracked in this block
+// returns AlreadyTracked, which is not an error.
+func (s *IOCService) MarkManualIOC(ctx context.Context, caseID, blockID, iocType, value string) (UpsertResult, error) {
+	userID, err := s.currentUserID()
+	if err != nil {
+		return UpsertResult{}, err
+	}
+	t := IOCType(iocType)
+	if !ValidType(t) {
+		return UpsertResult{}, friendlyError(fmt.Errorf("%w: %q", ErrInvalidType, iocType), opMark)
+	}
+	res, err := s.repo.UpsertOccurrence(ctx, UpsertOccurrenceInput{
+		CaseID:          caseID,
+		BlockID:         blockID,
+		Type:            t,
+		RawValue:        value,
+		DetectionMethod: DetectionMethodManual,
+		UserID:          userID,
+	})
+	if err != nil {
+		return UpsertResult{}, friendlyError(err, opMark)
+	}
+	return res, nil
+}
+
+// PromoteIndicator creates a case fact from the indicator and marks it
+// promoted, in one transaction.
+func (s *IOCService) PromoteIndicator(ctx context.Context, indicatorID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
+	userID, err := s.currentUserID()
+	if err != nil {
+		return models.CaseFact{}, err
+	}
+	fact, err := s.repo.PromoteIndicator(ctx, indicatorID, req, userID)
+	if err != nil {
+		return models.CaseFact{}, friendlyError(err, opPromote)
+	}
 	return fact, nil
+}
+
+// RestoreIndicator deletes the facts linked to a promoted indicator and
+// returns it to detected, in one transaction. Returns the deleted fact ids.
+func (s *IOCService) RestoreIndicator(ctx context.Context, indicatorID string) ([]string, error) {
+	userID, err := s.currentUserID()
+	if err != nil {
+		return nil, err
+	}
+	deleted, err := s.repo.RestoreIndicator(ctx, indicatorID, userID)
+	if err != nil {
+		return nil, friendlyError(err, opRestore)
+	}
+	return deleted, nil
+}
+
+// GetLinkedFacts returns the case facts that reference an indicator, for the
+// restore confirmation dialog.
+func (s *IOCService) GetLinkedFacts(ctx context.Context, indicatorID string) ([]models.CaseFact, error) {
+	if err := s.requireAuth(); err != nil {
+		return nil, err
+	}
+	facts, err := s.repo.ListLinkedFacts(ctx, indicatorID)
+	return facts, friendlyError(err, opRead)
+}
+
+// ListExportRows flattens every indicator in the case, false positives
+// included, into one IOCEntry per occurrence so the existing 7z and PDF
+// export code keeps its output shape. Indicators come in repository order
+// and occurrences in chain order within each indicator.
+//
+// TODO(v0.12.0 Pass 6): replace with ioc_summary.json v2 and the grouped PDF table
+func (s *IOCService) ListExportRows(ctx context.Context, caseID string) ([]IOCEntry, error) {
+	if err := s.requireAuth(); err != nil {
+		return nil, err
+	}
+	indicators, err := s.repo.ListIndicatorsByCase(ctx, caseID, true)
+	if err != nil {
+		return nil, fmt.Errorf("list indicators for export: %w", err)
+	}
+
+	rows := []IOCEntry{}
+	for _, ind := range indicators {
+		for _, o := range ind.Occurrences {
+			rows = append(rows, IOCEntry{
+				IOCID:           o.OccurrenceID,
+				CaseID:          ind.CaseID,
+				BlockID:         o.BlockID,
+				EvidenceItemID:  o.EvidenceItemID,
+				Type:            ind.Type,
+				Value:           o.RawValue,
+				Status:          ind.Status,
+				DetectionMethod: o.DetectionMethod,
+				Notes:           nil,
+				CreatedAt:       o.CreatedAt,
+				ConfirmedAt:     ind.ConfirmedAt,
+				UserID:          o.UserID,
+			})
+		}
+	}
+	return rows, nil
 }

@@ -100,7 +100,7 @@ func (a *App) openDatabase(path string) error {
 	evidenceRepo := database.NewEvidenceRepo(db)
 	tagRepo := database.NewTagRepo(db)
 	attachmentRepo := database.NewAttachmentRepo(db)
-	iocRepo := database.NewIOCRepo(db)
+	indicatorRepo := database.NewIndicatorRepo(db)
 	timelineRepo := database.NewTimelineRepo(db)
 	taskRepo := database.NewTaskRepo(db)
 	caseFactRepo := database.NewCaseFactRepo(db)
@@ -119,7 +119,7 @@ func (a *App) openDatabase(path string) error {
 	a.evidenceService = services.NewEvidenceService(evidenceRepo, caseRepo, auditRepo, a.session, a.timerService)
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.caseFactService = services.NewCaseFactService(caseFactRepo, auditRepo, a.session)
-	a.iocService = ioc.NewIOCService(iocRepo).WithCaseFactSupport(a.caseFactService, auditRepo)
+	a.iocService = ioc.NewIOCService(indicatorRepo, a.session)
 	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService)
 	a.taskService = services.NewTaskService(taskRepo, a.noteService, a.session)
 	a.noteBlockRepo = noteBlockRepo
@@ -260,12 +260,8 @@ func (a *App) CommitNote(req services.CommitNoteRequest) (*services.NoteBlockRes
 		return nil, err
 	}
 	// Best-effort IOC detection -- failure does not fail the commit.
-	var evID *string
-	if req.EvidenceItemID != "" {
-		evID = &req.EvidenceItemID
-	}
 	if detectErr := a.iocService.DetectAndStore(
-		a.ctx, req.CaseID, resp.BlockID, evID, req.Content, resp.AuthorID,
+		a.ctx, req.CaseID, resp.BlockID, req.Content, resp.AuthorID,
 	); detectErr != nil {
 		log.Printf("ioc detection failed for block %s: %v", resp.BlockID, detectErr)
 	}
@@ -452,50 +448,47 @@ func (a *App) GetAttachment(caseID, attachmentID string) (*services.AttachmentRe
 	return a.noteService.GetAttachment(a.ctx, caseID, attachmentID)
 }
 
-// GetCaseIOCs returns IOC entries for a case.
-// When includeAll is false, false_positive records are excluded (default for summary page).
-func (a *App) GetCaseIOCs(caseID string, includeAll bool) ([]ioc.IOCEntry, error) {
-	return a.iocService.GetCaseIOCs(a.ctx, caseID, includeAll)
+// GetCaseIndicators returns the case-wide indicators with their occurrences.
+// False positives are excluded unless includeFalsePositives is true.
+func (a *App) GetCaseIndicators(caseID string, includeFalsePositives bool) ([]ioc.Indicator, error) {
+	return a.iocService.GetCaseIndicators(a.ctx, caseID, includeFalsePositives)
 }
 
-// UpdateIOCStatus changes the status of an IOC (detected, confirmed, false_positive).
-func (a *App) UpdateIOCStatus(iocID string, status string) error {
-	return a.iocService.UpdateIOCStatus(a.ctx, iocID, status)
+// GetBlockIndicators returns every IOC occurrence in a committed block.
+func (a *App) GetBlockIndicators(blockID string) ([]ioc.BlockIOC, error) {
+	return a.iocService.GetBlockIndicators(a.ctx, blockID)
 }
 
-// UpdateIOCType changes the type of an IOC and resets its status to detected.
-func (a *App) UpdateIOCType(iocID string, iocType string) error {
-	return a.iocService.UpdateIOCType(a.ctx, iocID, iocType)
+// UpdateIndicatorStatus sets an indicator to detected, confirmed or false_positive.
+func (a *App) UpdateIndicatorStatus(indicatorID, status string) error {
+	return a.iocService.UpdateIndicatorStatus(a.ctx, indicatorID, status)
 }
 
-// GetBlockIOCs returns all IOC entries for a specific committed block.
-func (a *App) GetBlockIOCs(blockID string) ([]ioc.IOCEntry, error) {
-	return a.iocService.GetBlockIOCs(a.ctx, blockID)
+// UpdateIndicatorType changes an indicator's type. A collision with an existing
+// indicator is reported first and merged only when confirmMerge is true.
+func (a *App) UpdateIndicatorType(indicatorID, iocType string, confirmMerge bool) (ioc.TypeChangeResult, error) {
+	return a.iocService.UpdateIndicatorType(a.ctx, indicatorID, iocType, confirmMerge)
 }
 
-// CreateManualIOC stores a user-selected text value as a confirmed IOC with
-// detection_method=manual. evidenceItemID may be an empty string (treated as null).
-func (a *App) CreateManualIOC(caseID, blockID, evidenceItemID, iocType, value string) error {
-	userID := a.session.User().UserID
-	var eid *string
-	if evidenceItemID != "" {
-		eid = &evidenceItemID
-	}
-	return a.iocService.CreateManualIOC(a.ctx, caseID, blockID, eid, iocType, value, userID)
+// MarkManualIOC records a user-selected value in a block as a confirmed IOC.
+func (a *App) MarkManualIOC(caseID, blockID, iocType, value string) (ioc.UpsertResult, error) {
+	return a.iocService.MarkManualIOC(a.ctx, caseID, blockID, iocType, value)
 }
 
-// PromoteIOCToFact moves an IOC into Case Facts, setting its status to promoted.
-func (a *App) PromoteIOCToFact(iocID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
-	userID := a.session.User().UserID
-	return a.iocService.PromoteToFact(a.ctx, userID, iocID, req)
+// PromoteIndicatorToFact creates a case fact from an indicator and marks it promoted.
+func (a *App) PromoteIndicatorToFact(indicatorID string, req models.CreateCaseFactRequest) (models.CaseFact, error) {
+	return a.iocService.PromoteIndicator(a.ctx, indicatorID, req)
 }
 
-// RestorePromotedIOC deletes the associated case fact and resets the IOC status to detected.
-func (a *App) RestorePromotedIOC(iocID string, factID string) error {
-	if err := a.caseFactService.DeleteFact(a.ctx, factID); err != nil {
-		return fmt.Errorf("delete case fact: %w", err)
-	}
-	return a.iocService.UpdateIOCStatus(a.ctx, iocID, "detected")
+// RestorePromotedIndicator deletes the indicator's linked case facts and returns
+// it to detected. Returns the deleted fact ids.
+func (a *App) RestorePromotedIndicator(indicatorID string) ([]string, error) {
+	return a.iocService.RestoreIndicator(a.ctx, indicatorID)
+}
+
+// GetIndicatorLinkedFacts returns the case facts that reference an indicator.
+func (a *App) GetIndicatorLinkedFacts(indicatorID string) ([]models.CaseFact, error) {
+	return a.iocService.GetLinkedFacts(a.ctx, indicatorID)
 }
 
 // CreateCaseFact adds a new case fact to the case.
@@ -806,7 +799,8 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 			return
 		}
 
-		iocEntries, err := iocService.GetCaseIOCs(ctx, caseID, true)
+		// TODO(v0.12.0 Pass 6): replace with ioc_summary.json v2 and the grouped PDF table
+		iocEntries, err := iocService.ListExportRows(ctx, caseID)
 		if err != nil {
 			emitErr(fmt.Sprintf("get IOCs: %v", err))
 			return
@@ -1055,7 +1049,8 @@ func (a *App) runExportCasePDF() {
 		return
 	}
 
-	iocEntries, err := a.iocService.GetCaseIOCs(ctx, caseID, true)
+	// TODO(v0.12.0 Pass 6): replace with ioc_summary.json v2 and the grouped PDF table
+	iocEntries, err := a.iocService.ListExportRows(ctx, caseID)
 	if err != nil {
 		showPDFError(ctx, "get IOCs: "+err.Error())
 		return

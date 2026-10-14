@@ -1,7 +1,5 @@
 package ioc
 
-import "context"
-
 type IOCType string
 
 const (
@@ -38,6 +36,10 @@ type IOCMatch struct {
 	Value string
 }
 
+// IOCEntry is the flat per-occurrence row the 7z and PDF exports still read,
+// built by IOCService.ListExportRows.
+//
+// TODO(v0.12.0 Pass 6): remove with the export compatibility helper
 type IOCEntry struct {
 	IOCID           string    `json:"ioc_id"`
 	CaseID          string    `json:"case_id"`
@@ -51,22 +53,4 @@ type IOCEntry struct {
 	CreatedAt       string    `json:"created_at"`
 	ConfirmedAt     *string   `json:"confirmed_at,omitempty"`
 	UserID          string    `json:"user_id"`
-}
-
-// IOCRepository is defined here so the ioc package owns the interface;
-// database.IOCRepo implements it without creating a circular import.
-type IOCRepository interface {
-	Create(ctx context.Context, entry *IOCEntry) error
-	GetByID(ctx context.Context, iocID string) (*IOCEntry, error)
-	GetByBlock(ctx context.Context, blockID string) ([]IOCEntry, error)
-	ListByCase(ctx context.Context, caseID string, includeAll bool) ([]IOCEntry, error)
-	UpdateStatus(ctx context.Context, iocID string, status IOCStatus, confirmedAt *string) error
-	UpdateType(ctx context.Context, iocID string, iocType IOCType) error
-	// GetExistingByBlock returns a set of "type:value" keys already stored for blockID.
-	// Used by DetectAndStore to skip duplicates in one round-trip instead of N.
-	GetExistingByBlock(ctx context.Context, blockID string) (map[string]struct{}, error)
-	// InsertManualIOC inserts a user-supplied IOC with detection_method=manual and
-	// status=confirmed. Returns models.ErrDuplicateKey if (block_id, type, value) already
-	// exists so callers can surface a clear error without inspecting the raw SQL message.
-	InsertManualIOC(ctx context.Context, iocID, caseID, blockID string, evidenceItemID *string, iocType IOCType, value, userID string) error
 }
