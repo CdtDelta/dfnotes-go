@@ -224,19 +224,39 @@ const helpSections: HelpSection[] = [
                     <li>Windows registry key</li>
                     <li>CVE identifier</li>
                 </ul>
+                <p>
+                    Common forensic file extensions such as <code>.dat</code>, <code>.evtx</code>,{' '}
+                    <code>.pf</code>, <code>.lnk</code>, and <code>.pcap</code> are not treated as domains, so
+                    a filename like <code>NTUSER.DAT</code> is not flagged as a domain name.
+                </p>
+                <h3>Case-Wide Status</h3>
+                <p>
+                    Each IOC is tracked once per case as an indicator. When you confirm, dismiss, or promote a
+                    value, the new status applies in every note that contains it, across Master Notes and every
+                    evidence tab. Notes committed later that contain the same value inherit its current status
+                    automatically, so you only need to review a value once.
+                </p>
+                <p>
+                    Values are compared the way their type is normally written. Domains, email addresses,
+                    hashes, CVE identifiers, registry keys, Windows paths, and the scheme and host of a URL
+                    ignore letter case, so <code>EVIL.example.com</code> and <code>evil.example.com</code> are
+                    the same indicator. IPv6 addresses are compared in their canonical form. The manual{' '}
+                    <strong>file</strong> type and Unix paths must match exactly.
+                </p>
                 <h3>Highlight Colors</h3>
                 <ul>
                     <li><strong>Yellow</strong> -- detected but not yet reviewed</li>
                     <li><strong>Red</strong> -- confirmed IOC of interest</li>
-                    <li>False positives no longer show strikethrough in committed block view. They render as plain
-                        text, indistinguishable from non-IOC content. To review or restore false positive IOCs,
+                    <li>False positive and promoted IOCs render as plain text in committed block view,
+                        indistinguishable from non-IOC content. To review or restore false positive IOCs,
                         open the IOC Summary tab and enable <strong>Show False Positives</strong>.</li>
                 </ul>
                 <h3>Reviewing IOCs</h3>
                 <p>
                     Right-click any highlighted value in a committed block to open the context menu.
-                    From there you can confirm the IOC, dismiss it as a false positive, or restore
-                    a previously reviewed IOC back to detected status.
+                    From there you can confirm the IOC, dismiss it as a false positive, promote it to
+                    Case Facts, or restore a previously reviewed IOC back to detected status. The change
+                    applies case-wide. If an action fails, the error is shown in the menu.
                 </p>
                 <h3>Marking Selected Text as an IOC</h3>
                 <p>
@@ -246,21 +266,53 @@ const helpSections: HelpSection[] = [
                     pre-selected based on pattern matching against the selected text and the value
                     pre-filled from the selection. If no pattern matches the selected text, the type
                     field is left blank and must be chosen before submitting. The value is editable
-                    before saving. After saving, the highlight appears in the block view immediately
-                    without requiring a tab switch or restart. The IOC is stored with confirmed status
-                    and is visible in the IOC Summary tab.
+                    before saving. After saving, the highlight appears in the block view immediately.
+                    A manually marked IOC is confirmed; if the value was already tracked elsewhere in the
+                    case as detected or false positive, it becomes confirmed everywhere.
+                </p>
+                <p>
+                    From then on, every note you commit that contains the value is tagged with it
+                    automatically, with the detection method shown as <strong>propagated</strong>. Notes
+                    committed before you marked the value are not rescanned; if an earlier note also
+                    contains it, mark it in that note as well. If the value is already tracked in the
+                    note you are marking, the modal tells you so instead of creating a duplicate.
                 </p>
                 <h3>IOC Summary Tab</h3>
                 <p>
-                    The IOC Summary tab shows every detected IOC across the entire case. Values are displayed
-                    in defanged form (for example, <code>192[.]168[.]1[.]1</code> or <code>hxxps://example[.]com</code>)
-                    to prevent accidental activation. You can filter by IOC type and by evidence item.
-                    Click the source reference to navigate directly to the originating note block.
-                    Raw values are stored in the database; defanging is applied only in the summary view.
+                    The IOC Summary tab shows one row per indicator across the entire case. Each row shows
+                    the type, the defanged value (for example, <code>192[.]168[.]1[.]1</code> or{' '}
+                    <code>hxxps://example[.]com</code>), the status, how many notes contain it, the
+                    evidence items it appears in, how it was detected (auto, manual, propagated, or a
+                    combination), and when it was first seen. You can filter by IOC type and by evidence item.
+                </p>
+                <p>
+                    Click the value to jump to its first appearance in chain order. Click the note count
+                    to expand the row and see every occurrence with its evidence item and commit time;
+                    click any occurrence to jump to that note block. Raw values are stored in the database;
+                    defanging is applied only on display.
                 </p>
                 <p>
                     Unix file paths are detected and appear in the IOC Summary tab but are not highlighted
                     inline in committed block text, as they produce too many false positives in typical notes.
+                </p>
+                <h3>Editing IOC Type</h3>
+                <p>
+                    The IOC type assigned by auto-detection can be corrected from the IOC Summary tab via an
+                    inline dropdown. This is useful when auto-detection misclassifies a value -- for example,
+                    tagging a hash as the wrong algorithm. Changing the type resets the IOC status to detected,
+                    since a review under the old type no longer applies.
+                </p>
+                <p>
+                    If the same value is already tracked under the new type, a <strong>Merge indicators?</strong>{' '}
+                    prompt shows the existing indicator's status and how many occurrences will move. Choosing{' '}
+                    <strong>Merge</strong> folds the two into one indicator, which keeps the existing
+                    indicator's status. Cancel leaves both unchanged.
+                </p>
+                <p>
+                    <strong>file</strong> is a supported IOC type for standalone filenames (e.g.{' '}
+                    <code>NTUSER.DAT</code>). File IOCs are defanged with <code>[.]</code> before the extension.
+                    This type is not auto-detected; choose it when marking a value manually or by correcting
+                    the type of an existing IOC in the Summary tab.
                 </p>
                 <h3>Promoting to Case Facts</h3>
                 <p>
@@ -268,22 +320,31 @@ const helpSections: HelpSection[] = [
                     known-good artifacts rather than threat indicators. Click <strong>Promote</strong> on
                     any detected or confirmed row in the IOC Summary tab, or right-click a highlighted
                     IOC value in a committed block and select <strong>Promote to Case Facts</strong>.
-                    A modal opens with the type and value pre-filled from the IOC; fill in the required
-                    description field and click <strong>Save</strong>. Promoted IOCs are removed from the
-                    main IOC table and appear instead in a <strong>Promoted to Case Facts</strong> section
-                    at the bottom of the IOC Summary tab.
+                    A modal opens with the type and value pre-filled from the IOC, and the evidence item
+                    pre-selected when every occurrence is in the same one; fill in the required
+                    description field and click <strong>Save</strong>. Promotion applies case-wide: the
+                    value becomes plain text in every note, and the indicator moves to the{' '}
+                    <strong>Promoted to Case Facts</strong> section at the bottom of the IOC Summary tab.
                 </p>
-                <h3>Editing IOC Type</h3>
+                <h3>Restoring a Promoted IOC</h3>
                 <p>
-                    The IOC type assigned by auto-detection can be corrected from the IOC Summary tab via an
-                    inline dropdown. This is useful when auto-detection misclassifies a value -- for example,
-                    tagging a hash as the wrong algorithm. Changing the type resets the IOC status to detected.
+                    Click <strong>Restore</strong> on a row in the Promoted to Case Facts section. The
+                    confirmation lists every case fact linked to the indicator. Restoring deletes all of
+                    those case facts and returns the indicator to detected status, with its yellow
+                    highlight back in every note. If you want to keep a fact, note its details before
+                    restoring.
+                </p>
+                <h3>Cleaning Up a Value Listed Under Two Types</h3>
+                <p>
+                    The same text can end up tracked under two types, for example a filename detected as a
+                    domain in an earlier version and later marked as a file. Only one highlight is shown in
+                    the note. To clean up, find the unwanted row in the IOC Summary tab and either mark it{' '}
+                    <strong>FP</strong> (false positive) or change its type to match the other row, which
+                    offers to merge the two.
                 </p>
                 <p>
-                    <strong>file</strong> is a supported IOC type for standalone filenames (e.g.{' '}
-                    <code>NTUSER.DAT</code>). File IOCs are defanged with <code>[.]</code> before the extension.
-                    This type is not auto-detected; it is only reachable by manually correcting the type of an
-                    existing IOC in the Summary tab.
+                    Promote, restore, and merge each complete as a single step: either everything is saved
+                    or nothing changes. Every IOC status change is recorded in the audit log.
                 </p>
             </div>
         ),
@@ -375,11 +436,11 @@ const helpSections: HelpSection[] = [
                 </p>
                 <h3>Restoring a Promoted IOC</h3>
                 <p>
-                    Click <strong>Restore</strong> on any row in the promoted section. A confirmation prompt
-                    appears: "Restore this IOC to detected status? The associated case fact will be deleted."
-                    Confirming deletes the case fact and returns the IOC to detected status, restoring its
-                    yellow highlight in committed block views. The IOC can then be reviewed or confirmed
-                    the same as any other detected IOC.
+                    Click <strong>Restore</strong> on any row in the promoted section. A{' '}
+                    <strong>Restore indicator?</strong> confirmation lists every case fact linked to the IOC.
+                    Confirming deletes all of those case facts and returns the IOC to detected status,
+                    restoring its yellow highlight in every committed block view that contains it. The IOC
+                    can then be reviewed or confirmed the same as any other detected IOC.
                 </p>
             </div>
         ),
@@ -556,11 +617,18 @@ const helpSections: HelpSection[] = [
                     <li><code>evidence/[ITEM]/</code> -- metadata and block files for each evidence item.
                         The metadata.json for each item includes <code>current_location</code> and{' '}
                         <code>archive_location</code> fields.</li>
-                    <li><code>ioc_summary.json</code> -- all IOCs with raw and defanged values</li>
+                    <li><code>ioc_summary.json</code> -- one entry per indicator with raw and defanged values,
+                        its status, and every occurrence with its chain sequence number and evidence item number</li>
+                    <li><code>case_facts.json</code> -- all case facts; <code>source_ioc_id</code> refers to an indicator</li>
                     <li><code>timeline.json</code> -- all timeline entries</li>
                     <li><code>tasks.json</code> -- all tasks with status and linked block references</li>
                     <li><code>chain_verification.json</code> -- full hash chain data for independent verification</li>
                 </ul>
+                <p>
+                    JSON files carry a <code>format_version</code> field so tools reading them can tell
+                    which layout they use. A file without one is version 1. In this release{' '}
+                    <code>ioc_summary.json</code> and <code>case_facts.json</code> are version 2.
+                </p>
                 <h3>Important</h3>
                 <p>
                     Once extracted, the archive contents are not encrypted. Handle extracted files
@@ -581,6 +649,11 @@ const helpSections: HelpSection[] = [
                     items, IOC summary, timeline, task list, and chain verification. Each evidence item
                     section includes Current Location and Archive Location rows when those fields are set.
                     Items with no location fields set show no blank rows for those fields.
+                </p>
+                <p>
+                    The IOC summary lists one row per indicator with Evidence and Blocks (chain sequence
+                    numbers) columns, in separate tables for confirmed and detected, promoted to case
+                    facts, and dismissed IOCs.
                 </p>
                 <p>
                     A SHA-256 sidecar file is written alongside the PDF for integrity verification.

@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.11.0**
+**Version 0.12.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -14,7 +14,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 - Per-case encrypted storage with a separate case password (on by default, optional at creation)
 - Evidence item tracking with configurable numbering and chain of custody logging
-- Automated IOC detection (12 types) with confirm/false positive/promote workflow
+- Automated IOC detection (12 types) with case-wide confirm/false positive/promote workflow: mark a value once and the status applies in every note that contains it
 - Manual IOC and Case Fact creation from selected text in committed block views
 - Case Facts tab for informational artifacts that are not IOCs
 - Case timeline for key events
@@ -55,14 +55,21 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### IOC Detection
 - Automatic detection on block commit for 12 IOC types: IPv4, IPv6, domain, URL, email, MD5, SHA1, SHA256, Windows file path, Unix file path, registry key, CVE
-- Manual "file" type for standalone filenames (e.g. NTUSER.DAT) -- not auto-detected, assignable via type correction
+- IOCs are tracked case-wide as indicators. Confirming, dismissing, or promoting a value applies to every note that contains it, and new notes inherit the status when committed
+- Matching folds case where the type is case-insensitive (domains, emails, hashes, CVEs, registry keys, Windows paths, URL scheme and host); IPv6 addresses are compared in canonical form; the manual "file" type and Unix paths match exactly
+- Common forensic file extensions (for example .dat, .evtx, .pf, .lnk, .pcap) are not detected as domains
+- Manual "file" type for standalone filenames (e.g. NTUSER.DAT) -- not auto-detected, assignable when marking a value manually or via type correction
 - Manual IOC creation from selected text: highlight any text in a committed block, right-click, choose "Mark as IOC" -- type is pre-selected via pattern matching, value is pre-filled and editable
+- Manual IOCs propagate automatically to notes committed after the mark, recorded with detection method "propagated"; notes committed before the mark are not rescanned
+- Marking a value that is already tracked in that note shows a message instead of an error
 - Yellow highlight for detected IOCs, red for confirmed; false positive and promoted IOCs render as plain unstyled text in block view
 - Right-click context menu to confirm, dismiss, promote to Case Facts, or restore status
-- IOC type editable from the IOC Summary tab via an inline dropdown -- useful when auto-detection misclassifies a value
+- IOC Summary tab shows one row per indicator with type, defanged value, status, note count, evidence items, detection method, and first seen time; expand a row to see every occurrence and jump to it; clicking the value jumps to its first appearance in chain order
+- IOC Summary filtering by type and evidence item
+- IOC type editable from the IOC Summary tab via an inline dropdown -- useful when auto-detection misclassifies a value; changing the type to one that already exists for the same value offers to merge the two indicators
 - Status or type changes in the IOC Summary tab immediately update highlights in all committed block views
-- IOC Summary tab with defanged display, filtering by type and evidence item, source navigation
 - Promoted IOCs appear in a separate section at the bottom of IOC Summary with a Restore action
+- Promote, restore, and merge each run as a single atomic transaction; IOC status changes are audit logged
 - All IOC values stored raw, defanged only on display
 
 ### Case Facts
@@ -72,7 +79,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Each fact has a type, description, value, optional evidence item association, optional source block link, and optional notes
 - Quick entry from committed block view: highlight text, right-click, choose "Add as Case Fact" to open the add form pre-populated with the selection
 - IOCs can be promoted directly to Case Facts from the IOC Summary tab or from the right-click context menu in block view -- promotion sets the IOC to a "promoted" status (plain text in block view) and creates the fact with provenance back to the source IOC
-- Promoting an IOC is reversible: Restore in the promoted section of IOC Summary deletes the case fact and returns the IOC to detected status
+- Promoting an IOC is reversible: Restore in the promoted section of IOC Summary deletes the linked case facts and returns the IOC to detected status
 - Filterable by type and evidence item, combinable
 - Audit logged on create, update, and delete; not immutable
 - Included in both the 7z export archive (case_facts.json) and the PDF export
@@ -129,11 +136,12 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `[CASENUMBER].db` -- the encrypted SQLite database
   - `master_notes/` -- one markdown file per committed block with hash/signature header
   - `evidence/[ITEM]/` -- metadata.json (includes current_location and archive_location) and block markdown files per evidence item
-  - `ioc_summary.json` -- all IOCs with raw and defanged values
-  - `case_facts.json` -- all case facts with type, description, value, and source references
+  - `ioc_summary.json` -- case-wide indicators with nested occurrences, chain sequence numbers and evidence item numbers (format_version 2)
+  - `case_facts.json` -- all case facts with type, description, value, and source references (format_version 2; `source_ioc_id` refers to an indicator)
   - `timeline.json` -- all timeline entries
   - `tasks.json` -- all tasks with status, evidence item, and linked block references
   - `chain_verification.json` -- full hash chain with per-block verification results (content hash, previous-block hash, commit timestamp, block id, base64 signature, verdict, and detail) and top-level `chain_intact` flag; contains all fields needed for independent re-verification
+- JSON files carry a per-file `format_version`; a file without one is version 1
 - Once extracted, archive contents are not encrypted -- handle according to your organization's data handling policy
 - Export logged in the audit trail
 
@@ -143,6 +151,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Sections: cover page, table of contents, case facts, master notes, evidence items, IOC summary, timeline, task list, chain verification, image appendix
 - Note blocks rendered with full verification hash (SHA-256), commitment timestamp, and block ID; per-block headers show the real verification verdict from the chain run
 - Chain verification section: explanatory statement, chain-intact summary line, per-block table (hash, signature, link, verdict), and a findings list for any failures
+- IOC summary is one row per indicator with Evidence and Blocks (chain sequence) columns, in three tables: Confirmed and Detected, Promoted to Case Facts, and Dismissed
 - IOC values displayed defanged throughout; case fact values displayed raw
 - SHA-256 sidecar file written alongside the PDF for integrity verification
 - Export logged in the audit trail
@@ -228,11 +237,44 @@ build/bin/dfnotes-go
 - **Archive manager compatibility:** AES-256 encrypted 7z archives must be opened with the 7z CLI or 7-Zip. Most GUI archive managers including Ubuntu's file-roller do not support them.
 - **Document Now focus:** The documentation reminder modal's Document Now button focuses the first textarea in the DOM (80ms delay) rather than targeting the editor via a named ref. Works correctly in practice since the notes editor is the only textarea present when the modal fires.
 - **PDF bold text:** The PDF export renders bold text in regular weight. DejaVu Sans Bold is not yet embedded; bold style falls back to regular weight throughout the PDF.
-- **Evidence item cross-referencing in export JSON:** `ioc_summary.json`, `case_facts.json`, and the markdown block file header comments still reference evidence items by raw `evidence_item_id` (UUID) rather than the configured item_number. `metadata.json` and `tasks.json` do carry the human-readable number.
+- **Evidence item cross-referencing in export JSON:** `ioc_summary.json`, `metadata.json`, and `tasks.json` carry the human-readable `item_number`. `case_facts.json` and the markdown block file header comments still reference evidence items by raw `evidence_item_id` (UUID).
+- **Manual IOCs are not retroactive:** a manually marked value propagates to notes committed after the mark. Notes committed before the mark are not rescanned; mark the value in those notes individually if needed.
+- **Overlapping indicators:** if two indicators cover identical text in a note (for example a value detected as a domain before v0.12.0 and later marked as a file), the highlight shows one of them by priority. Clean up the other from the IOC Summary tab by marking it false positive or retyping it, which merges it into the matching indicator.
 
 ---
 
 ## Changelog
+
+### v0.12.0 (2026-10-14)
+
+**Case-Wide IOC Indicators**
+- IOC status is now case-wide. Confirming, dismissing, or promoting a value applies to every note that contains it, and new notes inherit the status when committed. Previously each note tracked its own copy, so the same hash pasted into five notes had to be marked five times and appeared five times in IOC Summary
+- IOC Summary shows one row per indicator with its note count, evidence items, detection method and first-seen time; expand a row to see every occurrence and jump to it. Clicking the value jumps to its first appearance in chain order
+- Values are matched case-insensitively where the type is case-insensitive (domains, emails, hashes, CVEs, registry keys, Windows paths, URL scheme and host). IPv6 addresses are compared in canonical form. The manual file type and Unix paths match exactly
+- Manual IOCs now propagate to notes committed after the mark. Earlier notes are not rescanned
+- Marking a value that is already tracked in the same note shows a message instead of an error
+- Changing an IOC's type to one that already exists offers to merge the two
+- Restore lists every linked case fact before deleting them. Promote pre-selects the evidence item when all occurrences share one
+- Promote, restore and merge each run as a single atomic transaction. IOC status changes are now audit logged
+
+**Detection**
+- Forensic file extensions such as .dat, .evtx, .hve, .lnk, .pf, .pcap, .vmdk, .db and common document and image types are no longer detected as domains (NTUSER.DAT, for example). .pf and .py are real TLDs excluded on purpose; a domain missed this way can be marked manually once and propagates
+
+**Interface**
+- IOC highlight colors retuned for readable contrast in all 11 themes
+- Errors from IOC actions are now shown instead of silently ignored
+- IOC dialogs are theme-aware
+
+**Export**
+- ioc_summary.json is now format_version 2: one entry per indicator with nested occurrences, chain sequence numbers and evidence item numbers
+- case_facts.json is now format_version 2; source_ioc_id refers to an indicator
+- PDF IOC section shows one row per indicator with Evidence and Blocks columns. Promoted indicators have their own table (previously they appeared under Confirmed and Detected)
+
+**Upgrade notes**
+- Migration 016 converts existing IOC data in every case on first launch. It is one-way: older builds cannot open the database afterward. Back up before upgrading (Settings, Back up now)
+- An automatic pre-migration snapshot is written next to the database before any pending migration runs
+- Where the same value had different statuses in different notes, the merged indicator keeps the strongest (promoted, then confirmed, then false positive, then detected) and the merge is recorded in the audit log
+- Values detected as domains before this release (such as NTUSER.DAT) keep their existing indicators; clean them up from IOC Summary by marking them false positive or retyping them
 
 ### v0.11.0 (2026-10-08)
 
