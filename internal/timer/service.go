@@ -21,7 +21,7 @@ type Service interface {
 type resetKind int
 
 const (
-	resetFull    resetKind = iota
+	resetFull resetKind = iota
 	resetPartial
 	resetSnooze
 )

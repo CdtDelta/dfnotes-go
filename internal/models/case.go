@@ -13,23 +13,23 @@ const (
 )
 
 type Case struct {
-	CaseID              string              `json:"case_id"`
-	CaseNumber          string              `json:"case_number"`
-	Title               string              `json:"title"`
-	Description         string              `json:"description"`
-	Classification      ClassificationLevel `json:"classification"`
-	TicketNumber        string              `json:"ticket_number"`
-	ExaminerName        string              `json:"examiner_name"`
-	Organization        string              `json:"organization"`
-	EvidencePrefix      string              `json:"evidence_prefix"`
-	EvidenceSeqDigits   int                 `json:"evidence_seq_digits"`
-	Salt                []byte              `json:"salt"`
-	EncryptedKey        []byte              `json:"encrypted_key"`
-	CreatedBy                 string              `json:"created_by"`
-	CreatedAt                 time.Time           `json:"created_at"`
-	UpdatedAt                 time.Time           `json:"updated_at"`
-	AttorneyClientPrivilege   bool                `json:"attorney_client_privilege"`
+	CaseID                  string              `json:"case_id"`
+	CaseNumber              string              `json:"case_number"`
+	Title                   string              `json:"title"`
+	Description             string              `json:"description"`
+	Classification          ClassificationLevel `json:"classification"`
+	TicketNumber            string              `json:"ticket_number"`
+	ExaminerName            string              `json:"examiner_name"`
+	Organization            string              `json:"organization"`
+	EvidencePrefix          string              `json:"evidence_prefix"`
+	EvidenceSeqDigits       int                 `json:"evidence_seq_digits"`
+	Salt                    []byte              `json:"salt"`
+	EncryptedKey            []byte              `json:"encrypted_key"`
+	CreatedBy               string              `json:"created_by"`
+	CreatedAt               time.Time           `json:"created_at"`
+	UpdatedAt               time.Time           `json:"updated_at"`
+	AttorneyClientPrivilege bool                `json:"attorney_client_privilege"`
 	// NoCasePassword is opt-out so the zero value fails closed: a Case built
 	// without this field set requires a case password.
-	NoCasePassword            bool                `json:"no_case_password"`
+	NoCasePassword bool `json:"no_case_password"`
 }

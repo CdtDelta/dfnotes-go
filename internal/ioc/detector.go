@@ -194,4 +194,3 @@ func DetectIOCs(content string) []IOCMatch {
 
 	return results
 }
-

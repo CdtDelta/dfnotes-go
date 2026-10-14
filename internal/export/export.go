@@ -84,15 +84,15 @@ type chainVerification struct {
 }
 
 type taskExport struct {
-	TaskID       string              `json:"task_id"`
-	Title        string              `json:"title"`
-	Description  string              `json:"description"`
-	Status       string              `json:"status"`
-	EvidenceItem string              `json:"evidence_item,omitempty"`
-	TemplateName string              `json:"template_name,omitempty"`
-	CreatedAt    string              `json:"created_at"`
-	CompletedAt  string              `json:"completed_at,omitempty"`
-	LinkedBlocks []taskLinkedBlock   `json:"linked_blocks"`
+	TaskID       string            `json:"task_id"`
+	Title        string            `json:"title"`
+	Description  string            `json:"description"`
+	Status       string            `json:"status"`
+	EvidenceItem string            `json:"evidence_item,omitempty"`
+	TemplateName string            `json:"template_name,omitempty"`
+	CreatedAt    string            `json:"created_at"`
+	CompletedAt  string            `json:"completed_at,omitempty"`
+	LinkedBlocks []taskLinkedBlock `json:"linked_blocks"`
 }
 
 type taskLinkedBlock struct {

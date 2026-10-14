@@ -28,7 +28,7 @@ func createTestUser(t *testing.T, db *DB) *models.UserIdentity {
 		UserID:              "user-1",
 		Name:                "Test User",
 		Organization:        "Test Org",
-		PublicKey:            []byte("pub-key-bytes"),
+		PublicKey:           []byte("pub-key-bytes"),
 		EncryptedPrivateKey: []byte("enc-priv-key"),
 		Salt:                []byte("salt-bytes"),
 		TOTPEnabled:         false,

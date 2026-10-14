@@ -11,17 +11,17 @@ const (
 )
 
 type Task struct {
-	TaskID         string      `json:"task_id"`
-	CaseID         string      `json:"case_id"`
-	EvidenceItemID *string     `json:"evidence_item_id"`
-	UserID         string      `json:"user_id"`
-	Title          string      `json:"title"`
-	Description    string      `json:"description"`
-	Status         TaskStatus  `json:"status"`
-	TemplateName   *string     `json:"template_name"`
-	CreatedAt      string      `json:"created_at"`
-	UpdatedAt      string      `json:"updated_at"`
-	CompletedAt    *string     `json:"completed_at"`
+	TaskID         string        `json:"task_id"`
+	CaseID         string        `json:"case_id"`
+	EvidenceItemID *string       `json:"evidence_item_id"`
+	UserID         string        `json:"user_id"`
+	Title          string        `json:"title"`
+	Description    string        `json:"description"`
+	Status         TaskStatus    `json:"status"`
+	TemplateName   *string       `json:"template_name"`
+	CreatedAt      string        `json:"created_at"`
+	UpdatedAt      string        `json:"updated_at"`
+	CompletedAt    *string       `json:"completed_at"`
 	LinkedBlocks   []LinkedBlock `json:"linked_blocks"`
 }
 

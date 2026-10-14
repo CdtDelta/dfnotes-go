@@ -28,7 +28,7 @@ type BlockCheck struct {
 
 // BlockResult is the per-block verdict for the chain.
 type BlockResult struct {
-	Sequence       int    // 1-based position in chain order
+	Sequence       int // 1-based position in chain order
 	BlockID        string
 	EvidenceItemID string // "" for master notes; raw id otherwise (service maps to item_number)
 	CommittedAt    string // RFC3339 UTC

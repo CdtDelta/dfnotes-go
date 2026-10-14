@@ -22,7 +22,7 @@ const (
 
 // classColor holds RGB values for a classification level banner.
 type classColor struct {
-	BgR, BgG, BgB     int // background
+	BgR, BgG, BgB       int // background
 	TextR, TextG, TextB int // text (always white)
 }
 

@@ -8,17 +8,17 @@ import (
 type AuditAction string
 
 const (
-	AuditActionCreate     AuditAction = "CREATE"
-	AuditActionUpdate     AuditAction = "UPDATE"
-	AuditActionDelete     AuditAction = "DELETE"
-	AuditActionLogin      AuditAction = "LOGIN"
-	AuditActionLogout     AuditAction = "LOGOUT"
-	AuditActionExport     AuditAction = "EXPORT"
-	AuditActionImport     AuditAction = "IMPORT"
-	AuditActionSign       AuditAction = "SIGN"
-	AuditActionVerify     AuditAction = "VERIFY"
-	AuditActionCustody    AuditAction = "CUSTODY"
-	AuditActionUnlock     AuditAction = "UNLOCK"
+	AuditActionCreate  AuditAction = "CREATE"
+	AuditActionUpdate  AuditAction = "UPDATE"
+	AuditActionDelete  AuditAction = "DELETE"
+	AuditActionLogin   AuditAction = "LOGIN"
+	AuditActionLogout  AuditAction = "LOGOUT"
+	AuditActionExport  AuditAction = "EXPORT"
+	AuditActionImport  AuditAction = "IMPORT"
+	AuditActionSign    AuditAction = "SIGN"
+	AuditActionVerify  AuditAction = "VERIFY"
+	AuditActionCustody AuditAction = "CUSTODY"
+	AuditActionUnlock  AuditAction = "UNLOCK"
 )
 
 type AuditLog struct {

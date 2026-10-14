@@ -292,7 +292,7 @@ type ChainVerificationResult struct {
 type ChainBlockResult struct {
 	Sequence       int    `json:"sequence"`
 	BlockID        string `json:"block_id"`
-	Source         string `json:"source"`          // "Master" or item_number (display label)
+	Source         string `json:"source"`           // "Master" or item_number (display label)
 	EvidenceItemID string `json:"evidence_item_id"` // "" for master notes; raw id otherwise
 	CommittedAt    string `json:"committed_at"`
 	IsAmendment    bool   `json:"is_amendment"`
@@ -748,17 +748,17 @@ func (a *App) ExportCase(caseID string, archivePassword string, archivePath stri
 
 	// Snapshot all fields accessed inside the goroutine to avoid data races
 	// with concurrent MoveDatabase/PointDatabase calls on the main goroutine.
-	ctx             := a.ctx
-	caseService     := a.caseService
+	ctx := a.ctx
+	caseService := a.caseService
 	evidenceService := a.evidenceService
-	noteService     := a.noteService
-	noteBlockRepo   := a.noteBlockRepo
-	iocService      := a.iocService
+	noteService := a.noteService
+	noteBlockRepo := a.noteBlockRepo
+	iocService := a.iocService
 	timelineService := a.timelineService
-	taskService     := a.taskService
+	taskService := a.taskService
 	caseFactService := a.caseFactService
 	identityService := a.identityService
-	dbPath          := a.cfg.DatabasePath
+	dbPath := a.cfg.DatabasePath
 
 	go func() {
 		emitErr := func(msg string) {
@@ -1224,4 +1224,3 @@ func (a *App) GetDocReminderSettings() DocReminderSettings {
 		IntervalMinutes: a.cfg.DocReminderIntervalMinutes,
 	}
 }
-

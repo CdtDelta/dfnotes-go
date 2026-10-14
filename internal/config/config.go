@@ -8,14 +8,14 @@ import (
 )
 
 type Config struct {
-	DatabasePath              string `json:"database_path"`
-	Theme                     string `json:"theme"`
-	BackupEnabled             bool   `json:"backup_enabled"`
-	BackupDestPath            string `json:"backup_dest_path"`
-	BackupIntervalH           int    `json:"backup_interval_hours"`
-	BackupKeepCount           int    `json:"backup_keep_count"`
-	LastBackupAt              string `json:"last_backup_at"`     // ISO 8601 UTC; empty if never
-	LastBackupStatus          string `json:"last_backup_status"` // "success", "failed", or ""
+	DatabasePath               string `json:"database_path"`
+	Theme                      string `json:"theme"`
+	BackupEnabled              bool   `json:"backup_enabled"`
+	BackupDestPath             string `json:"backup_dest_path"`
+	BackupIntervalH            int    `json:"backup_interval_hours"`
+	BackupKeepCount            int    `json:"backup_keep_count"`
+	LastBackupAt               string `json:"last_backup_at"`     // ISO 8601 UTC; empty if never
+	LastBackupStatus           string `json:"last_backup_status"` // "success", "failed", or ""
 	DocReminderEnabled         bool   `json:"doc_reminder_enabled"`
 	DocReminderIntervalMinutes int    `json:"doc_reminder_interval_minutes"`
 }
@@ -26,7 +26,7 @@ func DefaultConfig() Config {
 		BackupEnabled:              false,
 		BackupIntervalH:            6,
 		BackupKeepCount:            10,
-		DocReminderEnabled:          false,
+		DocReminderEnabled:         false,
 		DocReminderIntervalMinutes: 30,
 	}
 }
