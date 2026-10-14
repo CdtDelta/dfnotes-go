@@ -473,6 +473,65 @@ func TestListBlockIOCsReflectsStatus(t *testing.T) {
 	}
 }
 
+func TestListManualIndicators(t *testing.T) {
+	_, repo := newIndicatorFixture(t)
+	ctx := context.Background()
+
+	empty, err := repo.ListManualIndicators(ctx, "case-1")
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("case with no indicators = %#v, %v", empty, err)
+	}
+
+	manual := upsert(t, repo, "b1", ioc.IOCTypeFile, "NTUSER.DAT", ioc.DetectionMethodManual).IndicatorID
+	fp := upsert(t, repo, "b1", ioc.IOCTypeDomain, "fp.example.com", ioc.DetectionMethodManual).IndicatorID
+	setStatus(t, repo, fp, ioc.IOCStatusFalsePositive)
+	// Auto first, manual mark later in another block: still counts as manual.
+	mixed := upsert(t, repo, "b2", ioc.IOCTypeDomain, "mixed.example.com", ioc.DetectionMethodAuto).IndicatorID
+	upsert(t, repo, "b3", ioc.IOCTypeDomain, "mixed.example.com", ioc.DetectionMethodManual)
+	upsert(t, repo, "b2", ioc.IOCTypeIPv4, "10.0.0.1", ioc.DetectionMethodAuto)
+	upsert(t, repo, "b2", ioc.IOCTypeFile, "other.dat", ioc.DetectionMethodPropagated)
+	if _, err := repo.UpsertOccurrence(ctx, ioc.UpsertOccurrenceInput{
+		CaseID: "case-2", BlockID: "c2b1", Type: ioc.IOCTypeFile, RawValue: "NTUSER.DAT",
+		DetectionMethod: ioc.DetectionMethodManual, UserID: "user-1",
+	}); err != nil {
+		t.Fatalf("manual mark in case-2: %v", err)
+	}
+
+	got, err := repo.ListManualIndicators(ctx, "case-1")
+	if err != nil {
+		t.Fatalf("ListManualIndicators: %v", err)
+	}
+	ids := map[string]ioc.Indicator{}
+	for _, ind := range got {
+		ids[ind.IndicatorID] = ind
+		if ind.CaseID != "case-1" {
+			t.Errorf("indicator %s from %s, want case-1", ind.IndicatorID, ind.CaseID)
+		}
+		if len(ind.Occurrences) != 0 {
+			t.Errorf("indicator %s has %d occurrences loaded, want none", ind.IndicatorID, len(ind.Occurrences))
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d manual indicators, want 3: %+v", len(got), got)
+	}
+	for _, id := range []string{manual, fp, mixed} {
+		if _, ok := ids[id]; !ok {
+			t.Errorf("indicator %s missing from manual list", id)
+		}
+	}
+	if ind := ids[fp]; ind.Status != ioc.IOCStatusFalsePositive {
+		t.Errorf("false positive indicator status = %s", ind.Status)
+	}
+	if ind := ids[manual]; ind.Type != ioc.IOCTypeFile || ind.Value != "NTUSER.DAT" || ind.MatchKey != "NTUSER.DAT" {
+		t.Errorf("manual indicator = %+v, want type, value and match key filled", ind)
+	}
+
+	other, err := repo.ListManualIndicators(ctx, "case-2")
+	if err != nil || len(other) != 1 || other[0].CaseID != "case-2" {
+		t.Errorf("case-2 manual indicators = %+v, %v; want only its own", other, err)
+	}
+}
+
 func TestUpdateIndicatorStatus(t *testing.T) {
 	db, repo := newIndicatorFixture(t)
 	ctx := context.Background()

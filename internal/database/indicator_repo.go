@@ -386,6 +386,35 @@ func (r *IndicatorRepo) listCaseIndicatorRows(ctx context.Context, caseID, filte
 	return out, nil
 }
 
+// ListManualIndicators is read by the commit-time scan, which only needs the
+// indicator rows, so occurrences are left empty.
+func (r *IndicatorRepo) ListManualIndicators(ctx context.Context, caseID string) ([]ioc.Indicator, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+indicatorColumns+` FROM indicators i
+		 WHERE i.case_id = ?
+		   AND EXISTS (
+		       SELECT 1 FROM ioc_occurrences o
+		       WHERE o.indicator_id = i.indicator_id AND o.detection_method = ?)
+		 ORDER BY i.created_at ASC, i.rowid ASC`, caseID, ioc.DetectionMethodManual)
+	if err != nil {
+		return nil, fmt.Errorf("list manual indicators: %w", wrapError(err))
+	}
+	defer rows.Close()
+
+	out := []ioc.Indicator{}
+	for rows.Next() {
+		ind, err := scanIndicator(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan manual indicator: %w", err)
+		}
+		out = append(out, *ind)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate manual indicators: %w", err)
+	}
+	return out, nil
+}
+
 func (r *IndicatorRepo) ListBlockIOCs(ctx context.Context, blockID string) ([]ioc.BlockIOC, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT o.occurrence_id, o.indicator_id, o.block_id, i.type, o.raw_value, i.status, o.detection_method

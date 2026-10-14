@@ -117,6 +117,9 @@ type IndicatorRepository interface {
 	GetIndicator(ctx context.Context, indicatorID string) (*Indicator, error)
 	ListIndicatorsByCase(ctx context.Context, caseID string, includeFalsePositives bool) ([]Indicator, error)
 	ListBlockIOCs(ctx context.Context, blockID string) ([]BlockIOC, error)
+	// ListManualIndicators returns the case's indicators, in any status, that
+	// have at least one manual occurrence. Occurrences are not loaded.
+	ListManualIndicators(ctx context.Context, caseID string) ([]Indicator, error)
 	ListLinkedFacts(ctx context.Context, indicatorID string) ([]models.CaseFact, error)
 	UpdateIndicatorStatus(ctx context.Context, indicatorID string, status IOCStatus, userID string) error
 	UpdateIndicatorType(ctx context.Context, indicatorID string, newType IOCType, confirmMerge bool, userID string) (TypeChangeResult, error)

@@ -116,9 +116,10 @@ func (s *IOCService) requireAuth() error {
 }
 
 // DetectAndStore scans plaintext content and records an auto occurrence for
-// every match. Called after a note block is committed. This is best-effort:
-// callers must not propagate returned errors as commit failures. userID is
-// the block author, passed in by the caller.
+// every regex match, then a propagated occurrence for every known manual
+// indicator found in the content. Called after a note block is committed.
+// This is best-effort: callers must not propagate returned errors as commit
+// failures. userID is the block author, passed in by the caller.
 func (s *IOCService) DetectAndStore(ctx context.Context, caseID, blockID, content, userID string) error {
 	if err := s.requireAuth(); err != nil {
 		return err
@@ -136,6 +137,39 @@ func (s *IOCService) DetectAndStore(ctx context.Context, caseID, blockID, conten
 		})
 		if err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("store ioc block=%s type=%s: %w", blockID, m.Type, err)
+		}
+	}
+
+	if err := s.propagateKnown(ctx, caseID, blockID, content, userID); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
+}
+
+// propagateKnown records manual indicators the regexes cannot find. It runs
+// after the regex pass, so a value already stored as auto in this block hits
+// the unique (indicator, block, raw_value) constraint and is skipped.
+func (s *IOCService) propagateKnown(ctx context.Context, caseID, blockID, content, userID string) error {
+	known, err := s.repo.ListManualIndicators(ctx, caseID)
+	if err != nil {
+		return fmt.Errorf("list manual indicators case=%s: %w", caseID, err)
+	}
+	if len(known) == 0 {
+		return nil
+	}
+
+	var firstErr error
+	for _, m := range FindKnownValues(content, known) {
+		_, err := s.repo.UpsertOccurrence(ctx, UpsertOccurrenceInput{
+			CaseID:          caseID,
+			BlockID:         blockID,
+			Type:            m.Type,
+			RawValue:        m.RawValue,
+			DetectionMethod: DetectionMethodPropagated,
+			UserID:          userID,
+		})
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("store propagated ioc block=%s indicator=%s: %w", blockID, m.IndicatorID, err)
 		}
 	}
 	return firstErr

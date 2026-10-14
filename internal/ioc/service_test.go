@@ -197,6 +197,136 @@ func TestDetectAndStoreNoMatches(t *testing.T) {
 	}
 }
 
+// blockIOCsFor returns the block's occurrences that belong to indicatorID.
+func blockIOCsFor(t *testing.T, svc *ioc.IOCService, block, indicatorID string) []ioc.BlockIOC {
+	t.Helper()
+	all, err := svc.GetBlockIndicators(context.Background(), block)
+	if err != nil {
+		t.Fatalf("GetBlockIndicators(%s): %v", block, err)
+	}
+	var out []ioc.BlockIOC
+	for _, b := range all {
+		if b.IndicatorID == indicatorID {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func occurrenceCount(t *testing.T, db *database.DB) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM ioc_occurrences").Scan(&n); err != nil {
+		t.Fatalf("count occurrences: %v", err)
+	}
+	return n
+}
+
+func TestDetectAndStorePropagatesManual(t *testing.T) {
+	svc, _ := newService(t)
+	res := mark(t, svc, "b1", "file", "NTUSER.DAT")
+
+	detect(t, svc, "b2", `Loaded C:\Users\x\NTUSER.DAT into Registry Explorer`)
+
+	got := blockIOCsFor(t, svc, "b2", res.IndicatorID)
+	if len(got) != 1 {
+		t.Fatalf("b2 occurrences of the manual indicator = %+v, want 1", got)
+	}
+	o := got[0]
+	if o.DetectionMethod != ioc.DetectionMethodPropagated || o.Status != ioc.IOCStatusConfirmed ||
+		o.RawValue != "NTUSER.DAT" || o.Type != ioc.IOCTypeFile {
+		t.Errorf("b2 occurrence = %+v, want propagated confirmed file NTUSER.DAT", o)
+	}
+
+	ind, ok := byID(indicators(t, svc), res.IndicatorID)
+	if !ok || len(ind.Occurrences) != 2 {
+		t.Errorf("manual indicator = %+v, want occurrences in b1 and b2", ind)
+	}
+}
+
+func TestDetectAndStoreNoRetroactivePropagation(t *testing.T) {
+	svc, _ := newService(t)
+	detect(t, svc, "b1", "Copied NTUSER.DAT off the image")
+	res := mark(t, svc, "b2", "file", "NTUSER.DAT")
+
+	if got := blockIOCsFor(t, svc, "b1", res.IndicatorID); len(got) != 0 {
+		t.Errorf("block committed before the manual mark gained %+v", got)
+	}
+	ind, _ := byID(indicators(t, svc), res.IndicatorID)
+	if len(ind.Occurrences) != 1 || ind.Occurrences[0].BlockID != "b2" {
+		t.Errorf("manual indicator occurrences = %+v, want only b2", ind.Occurrences)
+	}
+}
+
+func TestDetectAndStoreAutoWinsOverPropagated(t *testing.T) {
+	svc, _ := newService(t)
+	res := mark(t, svc, "b1", "domain", "evil-example.com")
+
+	detect(t, svc, "b2", "Beacon to evil-example.com again")
+
+	got := blockIOCsFor(t, svc, "b2", res.IndicatorID)
+	if len(got) != 1 || got[0].DetectionMethod != ioc.DetectionMethodAuto {
+		t.Fatalf("b2 occurrences = %+v, want exactly one auto occurrence", got)
+	}
+	if got[0].Status != ioc.IOCStatusConfirmed {
+		t.Errorf("status = %s, want confirmed from the manual mark", got[0].Status)
+	}
+}
+
+func TestDetectAndStorePropagatesFalsePositive(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t)
+	res := mark(t, svc, "b1", "file", "NTUSER.DAT")
+	if err := svc.UpdateIndicatorStatus(ctx, res.IndicatorID, "false_positive"); err != nil {
+		t.Fatalf("mark false positive: %v", err)
+	}
+
+	detect(t, svc, "b2", "Parsed NTUSER.DAT")
+
+	got := blockIOCsFor(t, svc, "b2", res.IndicatorID)
+	if len(got) != 1 || got[0].Status != ioc.IOCStatusFalsePositive ||
+		got[0].DetectionMethod != ioc.DetectionMethodPropagated {
+		t.Errorf("b2 occurrences = %+v, want one propagated false_positive", got)
+	}
+}
+
+func TestDetectAndStorePropagationNoMatch(t *testing.T) {
+	svc, db := newService(t)
+	mark(t, svc, "b1", "file", "NTUSER.DAT")
+	before := occurrenceCount(t, db)
+
+	detect(t, svc, "b2", "nothing interesting here, not even ntuser.dat.log")
+
+	if after := occurrenceCount(t, db); after != before {
+		t.Errorf("occurrence count went from %d to %d, want unchanged", before, after)
+	}
+}
+
+// failingManualList returns an error from ListManualIndicators and passes
+// every other call through to the real repository.
+type failingManualList struct {
+	ioc.IndicatorRepository
+}
+
+func (failingManualList) ListManualIndicators(context.Context, string) ([]ioc.Indicator, error) {
+	return nil, errors.New("forced list failure")
+}
+
+func TestDetectAndStoreManualListErrorKeepsRegexResults(t *testing.T) {
+	db := newFixtureDB(t)
+	session := services.NewSession()
+	session.SetAuthenticated(&models.UserIdentity{UserID: testUserID}, []byte("k"), nil)
+	svc := ioc.NewIOCService(failingManualList{database.NewIndicatorRepo(db)}, session)
+
+	err := svc.DetectAndStore(context.Background(), testCaseID, "b1", detectContent, testUserID)
+	if err == nil || !strings.Contains(err.Error(), "forced list failure") {
+		t.Fatalf("DetectAndStore error = %v, want the list failure", err)
+	}
+	if n := len(indicators(t, svc)); n != 3 {
+		t.Errorf("got %d indicators, want the 3 regex results stored", n)
+	}
+}
+
 func TestMarkManualIOC(t *testing.T) {
 	svc, _ := newService(t)
 
