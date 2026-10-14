@@ -416,8 +416,7 @@ export default function CaseDetailPage() {
                                 evidenceItems={evidenceItems}
                                 onNavigate={handleNavigate}
                                 onIocStatusChange={incrementIocVersion}
-                                evidencePrefix={caseData.evidence_prefix ?? 'E'}
-                                evidenceSeqDigits={caseData.evidence_seq_digits ?? 3}
+                                iocVersion={iocVersion}
                             />
                         )}
                         {activeTab === 'timeline' && (

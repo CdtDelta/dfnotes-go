@@ -75,19 +75,3 @@ export interface TypeChangeResult {
     merged: boolean;
     collision?: TypeCollision;
 }
-
-// Used only by IOCSummaryTab until v0.12.0 Pass 5b; remove there.
-export interface IOCEntry {
-    ioc_id: string;
-    case_id: string;
-    block_id: string;
-    evidence_item_id?: string;
-    type: IOCType;
-    value: string;
-    status: IOCStatus;
-    detection_method: string;
-    notes?: string;
-    created_at: string;
-    confirmed_at?: string;
-    user_id: string;
-}

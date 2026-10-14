@@ -1,30 +1,29 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    GetCaseFacts, GetFactTypes,
+    GetCaseFacts, GetCaseIndicators, GetIndicatorLinkedFacts,
+    RestorePromotedIndicator, UpdateIndicatorStatus, UpdateIndicatorType,
 } from '../../wailsjs/go/main/App';
 import { services, models } from '../../wailsjs/go/models';
-import type { IOCEntry, IOCStatus, IOCType } from '../utils/iocTypes';
+import type { Indicator, IOCStatus, IOCType, Occurrence, TypeChangeResult, TypeCollision } from '../utils/iocTypes';
 import { IOC_PATTERNS } from '../utils/iocPatterns';
 import { defang } from '../utils/defang';
-
-// TODO(v0.12.0 Pass 5b): remove these stubs with the Summary rewrite.
-async function GetCaseIOCs(_caseID: string, _includeAll: boolean): Promise<IOCEntry[]> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
-async function UpdateIOCStatus(_iocID: string, _status: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
-async function UpdateIOCType(_iocID: string, _iocType: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
-async function PromoteIOCToFact(_iocID: string, _req: models.CreateCaseFactRequest): Promise<models.CaseFact> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
-async function RestorePromotedIOC(_iocID: string, _factID: string): Promise<void> { throw new Error('IOC Summary is being rebuilt (v0.12.0 Pass 5b)'); }
+import ConfirmDialog from './ConfirmDialog';
+import PromoteFactModal from './PromoteFactModal';
 
 interface IOCSummaryTabProps {
     caseId: string;
     evidenceItems: services.EvidenceResponse[];
     onNavigate: (tab: string, blockId?: string) => void;
     onIocStatusChange: () => void;
-    evidencePrefix: string;
-    evidenceSeqDigits: number;
+    iocVersion: number;
 }
 
-type SortKey = 'type' | 'value' | 'status' | 'created_at';
+type SortKey = 'type' | 'value' | 'status' | 'occurrences' | 'created_at';
 type SortDir = 'asc' | 'desc';
+
+// Evidence filter value for blocks with no evidence item. Evidence item IDs
+// are UUIDs, so this cannot collide with one.
+const MASTER_FILTER = '__master__';
 
 const STATUS_ORDER: Record<IOCStatus, number> = {
     confirmed: 0, detected: 1, false_positive: 2, promoted: 3,
@@ -59,117 +58,122 @@ const STATUS_LABELS: Record<IOCStatus, string> = {
     promoted: 'Promoted',
 };
 
-const FACT_TYPES = [
-    'username', 'hostname', 'ip_address', 'mac_address', 'os_version', 'timezone',
-    'email_address', 'account_sid', 'full_name', 'phone_number', 'device_serial',
-    'url', 'file_path', 'domain', 'registry_key', 'custom',
-];
+const ACTION_BUTTON = 'text-xs text-gray-500 hover:text-gray-200 transition-colors';
 
-function formatFactType(t: string): string {
-    const special: Record<string, string> = {
-        ip_address: 'IP Address', mac_address: 'MAC Address',
-        os_version: 'OS Version', account_sid: 'Account SID', url: 'URL',
-    };
-    return special[t] ?? t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+/** '' means Master Notes (no evidence item). */
+function placeKey(occ: Occurrence): string {
+    return occ.evidence_item_id ?? '';
 }
 
-function iocTypeToFactType(iocType: IOCType): string {
-    const map: Partial<Record<IOCType, string>> = {
-        ipv4: 'ip_address', ipv6: 'ip_address',
-        domain: 'domain', url: 'url',
-        email: 'email_address',
-        file_path: 'file_path', file: 'file_path',
-        registry_key: 'registry_key',
-    };
-    return map[iocType] ?? 'custom';
+/** Distinct places in order of first appearance; occurrences arrive in chain order. */
+function distinctPlaces(ind: Indicator): string[] {
+    return Array.from(new Set(ind.occurrences.map(placeKey)));
 }
 
-const INPUT_CLASS = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
-const LABEL_CLASS = 'block text-xs text-gray-400 mb-1';
+function distinctBlockCount(ind: Indicator): number {
+    return new Set(ind.occurrences.map((o) => o.block_id)).size;
+}
 
-interface PromotedFactEntry { factId: string; promotedAt: string; }
+function blockTab(occ: Occurrence): string {
+    return occ.evidence_item_id ? `evidence-notes-${occ.evidence_item_id}` : 'notes';
+}
 
-export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIocStatusChange, evidencePrefix, evidenceSeqDigits }: IOCSummaryTabProps) {
-    const [iocs, setIocs] = useState<IOCEntry[]>([]);
+function typeLabel(t: string): string {
+    return IOC_PATTERNS.find((p) => p.type === t)?.label ?? t;
+}
+
+interface TypeChangeState {
+    indicator: Indicator;
+    newType: IOCType;
+    collision: TypeCollision;
+    error: string;
+}
+
+interface RestoreState {
+    indicator: Indicator;
+    facts: models.CaseFact[];
+    error: string;
+}
+
+export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIocStatusChange, iocVersion }: IOCSummaryTabProps) {
+    const [indicators, setIndicators] = useState<Indicator[]>([]);
+    const [facts, setFacts] = useState<models.CaseFact[]>([]);
+    const [error, setError] = useState('');
     const [showFPs, setShowFPs] = useState(false);
     const [typeFilter, setTypeFilter] = useState<IOCType[]>([]);
     const [evidenceFilter, setEvidenceFilter] = useState<string>('');
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('status');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-    // Promote state
-    const [factTypes, setFactTypes] = useState<string[]>(FACT_TYPES);
-    const [promotedFactsMap, setPromotedFactsMap] = useState<Map<string, PromotedFactEntry>>(new Map());
-    const [showPromoteModal, setShowPromoteModal] = useState(false);
-    const [promoteIoc, setPromoteIoc] = useState<IOCEntry | null>(null);
-    const [promoteType, setPromoteType] = useState('');
-    const [promoteLabel, setPromoteLabel] = useState('');
-    const [promoteValue, setPromoteValue] = useState('');
-    const [promoteEvidenceId, setPromoteEvidenceId] = useState('');
-    const [promoteNotes, setPromoteNotes] = useState('');
-    const [promoteError, setPromoteError] = useState('');
-    const [promoting, setPromoting] = useState(false);
+    const [promoteTarget, setPromoteTarget] = useState<Indicator | null>(null);
+    const [typeChange, setTypeChange] = useState<TypeChangeState | null>(null);
+    const [restore, setRestore] = useState<RestoreState | null>(null);
 
-    // Restore state
-    const [restoreConfirmId, setRestoreConfirmId] = useState<string | null>(null);
-    const [restoring, setRestoring] = useState(false);
-
-    // Fetch fact types once
     useEffect(() => {
-        GetFactTypes()
-            .then(types => { if (types?.length) setFactTypes(types); })
-            .catch(() => {});
-    }, []);
-
-    const fetchAll = useCallback(() => {
-        Promise.all([
-            GetCaseIOCs(caseId, showFPs),
-            GetCaseFacts(caseId),
-        ]).then(([iocResult, factsResult]) => {
-            setIocs((iocResult as IOCEntry[]) || []);
-            const m = new Map<string, PromotedFactEntry>();
-            (factsResult || []).forEach(f => {
-                if (f.sourceIocId) m.set(f.sourceIocId, { factId: f.factId, promotedAt: f.createdAt });
+        let cancelled = false;
+        Promise.all([GetCaseIndicators(caseId, showFPs), GetCaseFacts(caseId)])
+            .then(([indResult, factResult]) => {
+                if (cancelled) return;
+                setIndicators((indResult as Indicator[]) || []);
+                setFacts(factResult || []);
+            })
+            .catch((err: unknown) => {
+                if (!cancelled) setError(`Could not load IOCs: ${String(err)}`);
             });
-            setPromotedFactsMap(m);
-        }).catch(() => {});
-    }, [caseId, showFPs]);
+        // A slower earlier load must not overwrite a newer one.
+        return () => { cancelled = true; };
+    }, [caseId, showFPs, iocVersion]);
 
-    useEffect(() => {
-        fetchAll();
-    }, [fetchAll]);
-
-    const evidenceMap = useMemo(() => {
+    const itemNumbers = useMemo(() => {
         const m = new Map<string, string>();
-        const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
-        sorted.forEach((item, idx) => {
-            m.set(item.evidence_item_id, `${evidencePrefix}${String(idx + 1).padStart(evidenceSeqDigits, '0')}`);
-        });
+        evidenceItems.forEach((item) => m.set(item.evidence_item_id, item.item_number));
         return m;
-    }, [evidenceItems, evidencePrefix, evidenceSeqDigits]);
+    }, [evidenceItems]);
 
     const sortedEvidenceItems = useMemo(
         () => [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at)),
         [evidenceItems],
     );
 
-    const allTypes = useMemo(() => Array.from(new Set(iocs.map((i) => i.type))).sort(), [iocs]);
+    const evidenceLabel = useCallback(
+        (key: string) => (key ? (itemNumbers.get(key) ?? key) : 'Master'),
+        [itemNumbers],
+    );
+
+    const promotedAt = useMemo(() => {
+        const m = new Map<string, string>();
+        facts.forEach((f) => {
+            if (!f.sourceIocId) return;
+            const prev = m.get(f.sourceIocId);
+            if (!prev || f.createdAt < prev) m.set(f.sourceIocId, f.createdAt);
+        });
+        return m;
+    }, [facts]);
+
+    const active = useMemo(() => indicators.filter((i) => i.status !== 'promoted'), [indicators]);
+    const promoted = useMemo(() => indicators.filter((i) => i.status === 'promoted'), [indicators]);
+
+    const allTypes = useMemo(() => Array.from(new Set(active.map((i) => i.type))).sort(), [active]);
 
     const filtered = useMemo(() => {
-        let result = iocs.filter(i => i.status !== 'promoted');
+        let result = active;
         if (typeFilter.length > 0) {
             result = result.filter((i) => typeFilter.includes(i.type));
         }
         if (evidenceFilter) {
-            result = result.filter((i) => i.evidence_item_id === evidenceFilter);
+            const want = evidenceFilter === MASTER_FILTER ? '' : evidenceFilter;
+            result = result.filter((i) => i.occurrences.some((o) => placeKey(o) === want));
         }
         if (search) {
             const q = search.toLowerCase();
-            result = result.filter((i) => i.value.toLowerCase().includes(q));
+            result = result.filter((i) =>
+                i.value.toLowerCase().includes(q) ||
+                i.occurrences.some((o) => o.raw_value.toLowerCase().includes(q)));
         }
         return result;
-    }, [iocs, typeFilter, evidenceFilter, search]);
+    }, [active, typeFilter, evidenceFilter, search]);
 
     const sorted = useMemo(() => {
         return [...filtered].sort((a, b) => {
@@ -181,14 +185,14 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                 cmp = a.type.localeCompare(b.type);
             } else if (sortKey === 'value') {
                 cmp = a.value.localeCompare(b.value);
+            } else if (sortKey === 'occurrences') {
+                cmp = distinctBlockCount(a) - distinctBlockCount(b);
             } else if (sortKey === 'created_at') {
                 cmp = a.created_at.localeCompare(b.created_at);
             }
             return sortDir === 'asc' ? cmp : -cmp;
         });
     }, [filtered, sortKey, sortDir]);
-
-    const promotedIOCs = useMemo(() => iocs.filter(i => i.status === 'promoted'), [iocs]);
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -199,85 +203,85 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
         }
     };
 
-    const handleTypeChange = async (iocId: string, newType: IOCType) => {
-        const prev_type = iocs.find((i) => i.ioc_id === iocId)?.type;
-        setIocs((prev) =>
-            prev.map((i) => (i.ioc_id === iocId ? { ...i, type: newType, status: 'detected' } : i))
-        );
-        try {
-            await UpdateIOCType(iocId, newType);
-            onIocStatusChange();
-        } catch {
-            setIocs((prev) =>
-                prev.map((i) => (i.ioc_id === iocId ? { ...i, type: prev_type ?? i.type } : i))
-            );
-        }
-    };
-
-    const handleStatusChange = async (iocId: string, newStatus: IOCStatus) => {
-        try {
-            await UpdateIOCStatus(iocId, newStatus);
-            setIocs((prev) =>
-                prev.map((i) => (i.ioc_id === iocId ? { ...i, status: newStatus } : i))
-            );
-            onIocStatusChange();
-        } catch { /* ignore */ }
-    };
-
     const toggleTypeFilter = (type: IOCType) => {
         setTypeFilter((prev) =>
             prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
         );
     };
 
-    const openPromoteModal = (ioc: IOCEntry) => {
-        setPromoteIoc(ioc);
-        setPromoteType(iocTypeToFactType(ioc.type));
-        setPromoteLabel('');
-        setPromoteValue(ioc.value);
-        setPromoteEvidenceId(ioc.evidence_item_id ?? '');
-        setPromoteNotes('');
-        setPromoteError('');
-        setShowPromoteModal(true);
+    const toggleExpanded = (id: string) => {
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
     };
 
-    const handlePromote = async () => {
-        if (!promoteIoc) return;
-        setPromoteError('');
-        if (!promoteLabel.trim()) { setPromoteError('Description is required.'); return; }
-        if (!promoteValue.trim()) { setPromoteError('Value is required.'); return; }
-        setPromoting(true);
+    const goToOccurrence = (occ: Occurrence) => onNavigate(blockTab(occ), occ.block_id);
+
+    const handleStatusChange = async (ind: Indicator, newStatus: IOCStatus) => {
         try {
-            await PromoteIOCToFact(promoteIoc.ioc_id, {
-                caseId,
-                type: promoteType,
-                label: promoteLabel.trim(),
-                value: promoteValue.trim(),
-                evidenceItemId: promoteEvidenceId || undefined,
-                notes: promoteNotes.trim(),
-            } as models.CreateCaseFactRequest);
-            setShowPromoteModal(false);
+            await UpdateIndicatorStatus(ind.indicator_id, newStatus);
             onIocStatusChange();
-            fetchAll();
         } catch (err: unknown) {
-            setPromoteError(String(err));
-        } finally {
-            setPromoting(false);
+            setError(String(err));
         }
     };
 
-    const handleRestore = async (iocId: string) => {
-        const entry = promotedFactsMap.get(iocId);
-        if (!entry) return;
-        setRestoring(true);
+    // The dropdown is not updated optimistically; it shows server state once
+    // the iocVersion refetch lands.
+    const handleTypeChange = async (ind: Indicator, newType: IOCType) => {
         try {
-            await RestorePromotedIOC(iocId, entry.factId);
-            setRestoreConfirmId(null);
-            onIocStatusChange();
-            fetchAll();
-        } catch { /* ignore */ } finally {
-            setRestoring(false);
+            const res = await UpdateIndicatorType(ind.indicator_id, newType, false) as TypeChangeResult;
+            if (res.collision) {
+                setTypeChange({ indicator: ind, newType, collision: res.collision, error: '' });
+                return;
+            }
+            if (res.changed) onIocStatusChange();
+        } catch (err: unknown) {
+            setError(String(err));
         }
+    };
+
+    const confirmMerge = async () => {
+        if (!typeChange) return;
+        try {
+            const res = await UpdateIndicatorType(typeChange.indicator.indicator_id, typeChange.newType, true) as TypeChangeResult;
+            if (!res.changed) {
+                setTypeChange((s) => s && { ...s, error: 'The type was not changed.' });
+                return;
+            }
+            setTypeChange(null);
+            onIocStatusChange();
+        } catch (err: unknown) {
+            setTypeChange((s) => s && { ...s, error: String(err) });
+        }
+    };
+
+    const openRestore = async (ind: Indicator) => {
+        try {
+            const linked = await GetIndicatorLinkedFacts(ind.indicator_id);
+            setRestore({ indicator: ind, facts: linked || [], error: '' });
+        } catch (err: unknown) {
+            setError(String(err));
+        }
+    };
+
+    const confirmRestore = async () => {
+        if (!restore) return;
+        try {
+            await RestorePromotedIndicator(restore.indicator.indicator_id);
+            setRestore(null);
+            onIocStatusChange();
+        } catch (err: unknown) {
+            setRestore((s) => s && { ...s, error: String(err) });
+        }
+    };
+
+    /** The shared place when every occurrence is in one place, else Case Level. */
+    const defaultPromoteEvidence = (ind: Indicator): string => {
+        const places = distinctPlaces(ind);
+        return places.length === 1 ? places[0] : '';
     };
 
     const SortHeader = ({ label, k }: { label: string; k: SortKey }) => (
@@ -292,8 +296,24 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
         </button>
     );
 
+    const Sep = () => <span className="text-gray-700 mx-1">/</span>;
+
     return (
         <div className="space-y-4">
+            {error && (
+                <div role="alert" className="flex items-start justify-between gap-3 text-sm text-[var(--text-error)]">
+                    <span>{error}</span>
+                    <button
+                        type="button"
+                        onClick={() => setError('')}
+                        aria-label="Dismiss error"
+                        className="text-[var(--text-error)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                        &times;
+                    </button>
+                </div>
+            )}
+
             {/* Controls */}
             <div className="flex flex-wrap items-center gap-3">
                 <input
@@ -309,9 +329,10 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                     className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500"
                 >
                     <option value="">All Sources</option>
-                    {sortedEvidenceItems.map((item, idx) => (
+                    <option value={MASTER_FILTER}>Master Notes</option>
+                    {sortedEvidenceItems.map((item) => (
                         <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                            {evidencePrefix}{String(idx + 1).padStart(evidenceSeqDigits, '0')} - {item.name}
+                            {item.item_number} - {item.name}
                         </option>
                     ))}
                 </select>
@@ -330,17 +351,16 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
             {allTypes.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                     {allTypes.map((type) => {
-                        const label = IOC_PATTERNS.find((p) => p.type === type)?.label ?? type;
-                        const active = typeFilter.includes(type);
+                        const isActive = typeFilter.includes(type);
                         return (
                             <button
                                 key={type}
                                 onClick={() => toggleTypeFilter(type)}
                                 className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                                    active ? TYPE_COLORS[type] + ' ring-1 ring-white/20' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                    isActive ? TYPE_COLORS[type] + ' ring-1 ring-white/20' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                                 }`}
                             >
-                                {label}
+                                {typeLabel(type)}
                             </button>
                         );
                     })}
@@ -355,88 +375,130 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                             <th className="pb-2 pr-4"><SortHeader label="Type" k="type" /></th>
                             <th className="pb-2 pr-4"><SortHeader label="Value (defanged)" k="value" /></th>
                             <th className="pb-2 pr-4"><SortHeader label="Status" k="status" /></th>
-                            <th className="pb-2 pr-4 text-gray-400 font-medium">Source</th>
-                            <th className="pb-2 pr-4"><SortHeader label="Detected At" k="created_at" /></th>
+                            <th className="pb-2 pr-4"><SortHeader label="Occurrences" k="occurrences" /></th>
+                            <th className="pb-2 pr-4 font-medium text-gray-400">Evidence</th>
+                            <th className="pb-2 pr-4 font-medium text-gray-400">Detection</th>
+                            <th className="pb-2 pr-4"><SortHeader label="First Seen" k="created_at" /></th>
                             <th className="pb-2 pr-4 font-medium text-gray-400">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800">
                         {sorted.length === 0 && (
                             <tr>
-                                <td colSpan={6} className="py-8 text-center text-gray-500">
+                                <td colSpan={8} className="py-8 text-center text-gray-500">
                                     No IOCs found.
                                 </td>
                             </tr>
                         )}
-                        {sorted.map((ioc) => {
-                            const source = ioc.evidence_item_id
-                                ? (evidenceMap.get(ioc.evidence_item_id) ?? ioc.evidence_item_id)
-                                : 'Master Notes';
+                        {sorted.map((ind) => {
+                            const display = defang(ind.value, ind.type);
+                            const first = ind.occurrences[0];
+                            const noteCount = distinctBlockCount(ind);
+                            const isExpanded = expanded.has(ind.indicator_id);
+                            const methods = Array.from(new Set(ind.occurrences.map((o) => o.detection_method))).join(' + ');
                             return (
-                                <tr key={ioc.ioc_id} className="hover:bg-gray-800">
-                                    <td className="py-2 pr-4">
-                                        <select
-                                            value={ioc.type}
-                                            onChange={(e) => handleTypeChange(ioc.ioc_id, e.target.value as IOCType)}
-                                            className={`rounded text-xs font-medium px-1.5 py-0.5 border-0 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer ${TYPE_COLORS[ioc.type]}`}
-                                        >
-                                            {IOC_PATTERNS.map((p) => (
-                                                <option key={p.type} value={p.type}>{p.label}</option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={defang(ioc.value, ioc.type)}>
-                                        {defang(ioc.value, ioc.type)}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[ioc.status]}`}>
-                                            {STATUS_LABELS[ioc.status]}
-                                        </span>
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        <button
-                                            onClick={() => onNavigate(
-                                                ioc.evidence_item_id
-                                                    ? `evidence-notes-${ioc.evidence_item_id}`
-                                                    : 'notes',
-                                                ioc.block_id,
+                                <Fragment key={ind.indicator_id}>
+                                    <tr className="hover:bg-gray-800">
+                                        <td className="py-2 pr-4">
+                                            <select
+                                                value={ind.type}
+                                                onChange={(e) => handleTypeChange(ind, e.target.value as IOCType)}
+                                                disabled={ind.status === 'promoted'}
+                                                className={`rounded text-xs font-medium px-1.5 py-0.5 border-0 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer disabled:cursor-not-allowed ${TYPE_COLORS[ind.type]}`}
+                                            >
+                                                {IOC_PATTERNS.map((p) => (
+                                                    <option key={p.type} value={p.type}>{p.label}</option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                        <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={display}>
+                                            {first ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => goToOccurrence(first)}
+                                                    className="hover:underline text-left"
+                                                >
+                                                    {display}
+                                                </button>
+                                            ) : display}
+                                        </td>
+                                        <td className="py-2 pr-4">
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[ind.status]}`}>
+                                                {STATUS_LABELS[ind.status]}
+                                            </span>
+                                        </td>
+                                        <td className="py-2 pr-4 whitespace-nowrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleExpanded(ind.indicator_id)}
+                                                aria-expanded={isExpanded}
+                                                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                            >
+                                                {isExpanded ? '▾' : '▸'} {noteCount} {noteCount === 1 ? 'note' : 'notes'}
+                                            </button>
+                                        </td>
+                                        <td className="py-2 pr-4 text-xs text-gray-400">
+                                            {distinctPlaces(ind).map(evidenceLabel).join(', ')}
+                                        </td>
+                                        <td className="py-2 pr-4 text-xs text-gray-400 whitespace-nowrap">{methods}</td>
+                                        <td className="py-2 pr-4 text-xs text-gray-500 font-mono whitespace-nowrap">
+                                            {new Date(ind.created_at).toLocaleString()}
+                                        </td>
+                                        <td className="py-2 pr-4 text-xs whitespace-nowrap">
+                                            {ind.status === 'detected' && (
+                                                <>
+                                                    <button onClick={() => handleStatusChange(ind, 'confirmed')} className={ACTION_BUTTON}>Confirm</button>
+                                                    <Sep />
+                                                    <button onClick={() => handleStatusChange(ind, 'false_positive')} className={ACTION_BUTTON}>FP</button>
+                                                    <Sep />
+                                                    <button onClick={() => setPromoteTarget(ind)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
+                                                </>
                                             )}
-                                            className="text-xs text-blue-400 hover:text-blue-300 underline transition-colors"
-                                        >
-                                            {source}
-                                        </button>
-                                    </td>
-                                    <td className="py-2 pr-4 text-xs text-gray-500 font-mono whitespace-nowrap">
-                                        {new Date(ioc.created_at).toLocaleString()}
-                                    </td>
-                                    <td className="py-2 pr-4 text-xs whitespace-nowrap">
-                                        {ioc.status === 'detected' && (
-                                            <>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'confirmed')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Confirm</button>
-                                                <span className="text-gray-700 mx-1">/</span>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'false_positive')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">FP</button>
-                                                <span className="text-gray-700 mx-1">/</span>
-                                                <button onClick={() => openPromoteModal(ioc)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
-                                            </>
-                                        )}
-                                        {ioc.status === 'confirmed' && (
-                                            <>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'detected')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Unconfirm</button>
-                                                <span className="text-gray-700 mx-1">/</span>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'false_positive')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">FP</button>
-                                                <span className="text-gray-700 mx-1">/</span>
-                                                <button onClick={() => openPromoteModal(ioc)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
-                                            </>
-                                        )}
-                                        {ioc.status === 'false_positive' && (
-                                            <>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'confirmed')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Confirm</button>
-                                                <span className="text-gray-700 mx-1">/</span>
-                                                <button onClick={() => handleStatusChange(ioc.ioc_id, 'detected')} className="text-xs text-gray-500 hover:text-gray-200 transition-colors">Restore</button>
-                                            </>
-                                        )}
-                                    </td>
-                                </tr>
+                                            {ind.status === 'confirmed' && (
+                                                <>
+                                                    <button onClick={() => handleStatusChange(ind, 'detected')} className={ACTION_BUTTON}>Unconfirm</button>
+                                                    <Sep />
+                                                    <button onClick={() => handleStatusChange(ind, 'false_positive')} className={ACTION_BUTTON}>FP</button>
+                                                    <Sep />
+                                                    <button onClick={() => setPromoteTarget(ind)} className="text-xs text-gray-500 hover:text-green-400 transition-colors">Promote</button>
+                                                </>
+                                            )}
+                                            {ind.status === 'false_positive' && (
+                                                <>
+                                                    <button onClick={() => handleStatusChange(ind, 'confirmed')} className={ACTION_BUTTON}>Confirm</button>
+                                                    <Sep />
+                                                    <button onClick={() => handleStatusChange(ind, 'detected')} className={ACTION_BUTTON}>Restore to Detected</button>
+                                                </>
+                                            )}
+                                        </td>
+                                    </tr>
+                                    {isExpanded && (
+                                        <tr>
+                                            <td colSpan={8} className="pb-2 pl-8 pr-4">
+                                                <ul className="space-y-1">
+                                                    {ind.occurrences.map((occ) => (
+                                                        <li key={occ.occurrence_id}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => goToOccurrence(occ)}
+                                                                className="flex flex-wrap items-center gap-3 text-xs text-left text-gray-400 hover:text-gray-200 transition-colors"
+                                                            >
+                                                                <span className="text-blue-400 underline">
+                                                                    {occ.evidence_item_id ? evidenceLabel(occ.evidence_item_id) : 'Master Notes'}
+                                                                </span>
+                                                                <span className="font-mono">{new Date(occ.committed_at).toLocaleString()}</span>
+                                                                <span>{occ.detection_method}</span>
+                                                                {occ.raw_value !== ind.value && (
+                                                                    <span className="font-mono text-gray-300">{defang(occ.raw_value, ind.type)}</span>
+                                                                )}
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </Fragment>
                             );
                         })}
                     </tbody>
@@ -444,12 +506,12 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
             </div>
 
             {/* Promoted to Case Facts section */}
-            {promotedIOCs.length > 0 && (
+            {promoted.length > 0 && (
                 <div className="mt-2">
                     <div className="flex items-center gap-2 mb-3">
                         <span className="text-sm font-medium text-gray-300">Promoted to Case Facts</span>
                         <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-green-900/40 text-green-300 border border-green-700/50">
-                            {promotedIOCs.length}
+                            {promoted.length}
                         </span>
                         <div className="flex-1 border-t border-gray-700" />
                     </div>
@@ -459,62 +521,34 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                                 <tr className="text-left border-b border-gray-700">
                                     <th className="pb-2 pr-4 font-medium text-gray-400">IOC Type</th>
                                     <th className="pb-2 pr-4 font-medium text-gray-400">Value (defanged)</th>
-                                    <th className="pb-2 pr-4 font-medium text-gray-400">Evidence Item</th>
+                                    <th className="pb-2 pr-4 font-medium text-gray-400">Evidence</th>
                                     <th className="pb-2 pr-4 font-medium text-gray-400">Promoted At</th>
                                     <th className="pb-2 pr-4 font-medium text-gray-400">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800">
-                                {promotedIOCs.map((ioc) => {
-                                    const factEntry = promotedFactsMap.get(ioc.ioc_id);
-                                    const sourceLabel = ioc.evidence_item_id
-                                        ? (evidenceMap.get(ioc.evidence_item_id) ?? ioc.evidence_item_id)
-                                        : 'Case Level';
-
-                                    if (restoreConfirmId === ioc.ioc_id) {
-                                        return (
-                                            <tr key={ioc.ioc_id} className="bg-amber-900/20">
-                                                <td colSpan={5} className="py-3 px-2">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-sm text-amber-300">
-                                                            Restore this IOC to detected status? The associated case fact will be deleted.
-                                                        </span>
-                                                        <button
-                                                            onClick={() => handleRestore(ioc.ioc_id)}
-                                                            disabled={restoring}
-                                                            className="text-xs bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 text-white px-3 py-1 rounded transition-colors"
-                                                        >
-                                                            {restoring ? 'Restoring...' : 'Restore'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setRestoreConfirmId(null)}
-                                                            className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 transition-colors"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-
+                                {promoted.map((ind) => {
+                                    const display = defang(ind.value, ind.type);
+                                    const at = promotedAt.get(ind.indicator_id);
                                     return (
-                                        <tr key={ioc.ioc_id} className="hover:bg-gray-800">
+                                        <tr key={ind.indicator_id} className="hover:bg-gray-800">
                                             <td className="py-2 pr-4">
-                                                <span className={`rounded text-xs font-medium px-1.5 py-0.5 ${TYPE_COLORS[ioc.type]}`}>
-                                                    {IOC_PATTERNS.find(p => p.type === ioc.type)?.label ?? ioc.type}
+                                                <span className={`rounded text-xs font-medium px-1.5 py-0.5 ${TYPE_COLORS[ind.type]}`}>
+                                                    {typeLabel(ind.type)}
                                                 </span>
                                             </td>
-                                            <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={defang(ioc.value, ioc.type)}>
-                                                {defang(ioc.value, ioc.type)}
+                                            <td className="py-2 pr-4 font-mono text-xs text-gray-200 max-w-xs truncate" title={display}>
+                                                {display}
                                             </td>
-                                            <td className="py-2 pr-4 text-xs text-gray-400">{sourceLabel}</td>
+                                            <td className="py-2 pr-4 text-xs text-gray-400">
+                                                {distinctPlaces(ind).map(evidenceLabel).join(', ')}
+                                            </td>
                                             <td className="py-2 pr-4 text-xs text-gray-500 font-mono whitespace-nowrap">
-                                                {factEntry ? new Date(factEntry.promotedAt).toLocaleString() : ''}
+                                                {at ? new Date(at).toLocaleString() : ''}
                                             </td>
                                             <td className="py-2 pr-4 text-xs">
                                                 <button
-                                                    onClick={() => setRestoreConfirmId(ioc.ioc_id)}
+                                                    onClick={() => openRestore(ind)}
                                                     className="text-xs text-gray-500 hover:text-amber-400 transition-colors"
                                                 >
                                                     Restore
@@ -529,85 +563,64 @@ export default function IOCSummaryTab({ caseId, evidenceItems, onNavigate, onIoc
                 </div>
             )}
 
-            {/* Promote Modal */}
-            {showPromoteModal && promoteIoc && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                    <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-gray-200">Promote to Case Facts</h3>
-                            <button onClick={() => setShowPromoteModal(false)} className="text-gray-500 hover:text-gray-300">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className={LABEL_CLASS}>Type *</label>
-                                <select value={promoteType} onChange={(e) => setPromoteType(e.target.value)} className={INPUT_CLASS}>
-                                    {factTypes.map(t => <option key={t} value={t}>{formatFactType(t)}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className={LABEL_CLASS}>Evidence Item</label>
-                                <select value={promoteEvidenceId} onChange={(e) => setPromoteEvidenceId(e.target.value)} className={INPUT_CLASS}>
-                                    <option value="">Case Level</option>
-                                    {sortedEvidenceItems.map((item, idx) => (
-                                        <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                            {evidencePrefix}{String(idx + 1).padStart(evidenceSeqDigits, '0')} - {item.name}
-                                        </option>
+            {promoteTarget && (
+                <PromoteFactModal
+                    caseId={caseId}
+                    indicatorId={promoteTarget.indicator_id}
+                    iocType={promoteTarget.type}
+                    iocValue={promoteTarget.value}
+                    evidenceItems={evidenceItems}
+                    defaultEvidenceItemId={defaultPromoteEvidence(promoteTarget)}
+                    onClose={() => setPromoteTarget(null)}
+                    onPromoted={() => {
+                        setPromoteTarget(null);
+                        onIocStatusChange();
+                    }}
+                />
+            )}
+
+            {typeChange && (
+                <ConfirmDialog
+                    title="Merge indicators?"
+                    message={
+                        <p>
+                            {typeChange.newType}:{typeChange.indicator.value} already exists with
+                            status {typeChange.collision.target_status}. Merge {typeChange.collision.occurrences_to_move} occurrence(s) into it?
+                        </p>
+                    }
+                    confirmLabel="Merge"
+                    onConfirm={confirmMerge}
+                    onCancel={() => setTypeChange(null)}
+                    error={typeChange.error}
+                />
+            )}
+
+            {restore && (
+                <ConfirmDialog
+                    title="Restore indicator?"
+                    destructive
+                    message={
+                        restore.facts.length === 0 ? (
+                            <p>No linked case facts remain. The indicator returns to detected.</p>
+                        ) : (
+                            <>
+                                <p>These linked case facts will be deleted:</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                    {restore.facts.map((f) => (
+                                        <li key={f.factId}>
+                                            {f.label} ({f.evidenceItemId ? (itemNumbers.get(f.evidenceItemId) ?? f.evidenceItemId) : 'Case Level'})
+                                        </li>
                                     ))}
-                                </select>
-                            </div>
-                        </div>
-                        <div>
-                            <label className={LABEL_CLASS}>Description *</label>
-                            <input
-                                type="text"
-                                value={promoteLabel}
-                                onChange={(e) => setPromoteLabel(e.target.value)}
-                                placeholder="e.g. Suspect workstation IP"
-                                className={INPUT_CLASS}
-                                autoFocus
-                            />
-                        </div>
-                        <div>
-                            <label className={LABEL_CLASS}>Value *</label>
-                            <input
-                                type="text"
-                                value={promoteValue}
-                                onChange={(e) => setPromoteValue(e.target.value)}
-                                className={INPUT_CLASS}
-                            />
-                        </div>
-                        <div>
-                            <label className={LABEL_CLASS}>Notes</label>
-                            <textarea
-                                rows={2}
-                                value={promoteNotes}
-                                onChange={(e) => setPromoteNotes(e.target.value)}
-                                placeholder="Optional notes"
-                                className={INPUT_CLASS + ' resize-none'}
-                            />
-                        </div>
-                        {promoteError && <p className="text-xs text-red-400">{promoteError}</p>}
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handlePromote}
-                                disabled={promoting}
-                                className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
-                            >
-                                {promoting ? 'Promoting...' : 'Promote to Case Facts'}
-                            </button>
-                            <button
-                                onClick={() => setShowPromoteModal(false)}
-                                className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                                </ul>
+                                <p>The indicator returns to detected.</p>
+                            </>
+                        )
+                    }
+                    confirmLabel="Restore"
+                    onConfirm={confirmRestore}
+                    onCancel={() => setRestore(null)}
+                    error={restore.error}
+                />
             )}
         </div>
     );

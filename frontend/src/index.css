@@ -22,10 +22,10 @@
   --select-text: #e2e8f0;
   --option-bg: #1f2d3d;
   --option-text: #e2e8f0;
-  --ioc-detected-bg: rgba(250,189,47,0.35);
+  --ioc-detected-bg: rgba(250,189,47,0.25);
   --ioc-detected-text: #fabd2f;
-  --ioc-confirmed-bg: rgba(249,38,114,0.35);
-  --ioc-confirmed-text: #ff6e6e;
+  --ioc-confirmed-bg: rgba(249,38,114,0.25);
+  --ioc-confirmed-text: #fca5a5;
   --ioc-fp-bg: rgba(100,100,100,0.2);
   --ioc-fp-text: #666;
 }
@@ -93,7 +93,7 @@
 
 .ioc-highlight--confirmed {
   background-color: var(--ioc-confirmed-bg, rgba(239,68,68,0.2));
-  color: var(--ioc-confirmed-text, #ff6e6e);
+  color: var(--ioc-confirmed-text, #fca5a5);
   border-bottom: 1px solid var(--ioc-confirmed-text, rgba(239,68,68,0.5));
 }
 
