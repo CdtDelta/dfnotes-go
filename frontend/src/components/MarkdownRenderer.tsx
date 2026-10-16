@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import {
+    ATTACHMENT_PREFIX,
+    EVIDENCE_PREFIX,
+    previewImageUri,
+    previewLinkUri,
+    remarkGfmNoAutolink,
+} from '../utils/markdownPreview';
 import { GetAttachment } from '../../wailsjs/go/main/App';
 import { services } from '../../wailsjs/go/models';
 
@@ -72,13 +78,13 @@ export default function MarkdownRenderer({ content, caseId, evidenceItems, onEvi
 
     return (
         <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            transformLinkUri={(uri) => uri}
-            transformImageUri={(uri) => uri}
+            remarkPlugins={[remarkGfmNoAutolink]}
+            transformLinkUri={previewLinkUri}
+            transformImageUri={previewImageUri}
             components={{
                 a: ({ href, children, ...props }) => {
-                    if (href?.startsWith('evidence://')) {
-                        const evidenceItemId = href.replace('evidence://', '');
+                    if (href?.startsWith(EVIDENCE_PREFIX)) {
+                        const evidenceItemId = href.replace(EVIDENCE_PREFIX, '');
                         return (
                             <button
                                 onClick={() => onEvidenceClick?.(evidenceItemId)}
@@ -92,7 +98,7 @@ export default function MarkdownRenderer({ content, caseId, evidenceItems, onEvi
                     return <a href={href} {...props}>{children}</a>;
                 },
                 img: ({ src, alt, ...props }) => {
-                    if (src?.startsWith('attachment:')) {
+                    if (src?.startsWith(ATTACHMENT_PREFIX)) {
                         return <AttachmentImage src={src} caseId={caseId} alt={alt} />;
                     }
                     return <img src={src} alt={alt} {...props} />;

@@ -39,10 +39,12 @@ function preprocessMarkdown(
 
     // ![alt](attachment:ID) -- convert to img with data attribute; NoteBlockCard
     // loads the data URL via Wails in a useEffect after innerHTML is set.
+    // ID is the lowercase UUID from uuid.New().String() in note_service.go;
+    // anything else stays an ordinary Markdown image, whose src micromark blanks.
     result = result.replace(
-        /!\[([^\]]*)\]\(attachment:([^)]+)\)/g,
-        (_match, alt, id) =>
-            `<img data-attachment-id="${id}" alt="${alt.replace(/"/g, '&quot;')}" class="max-w-full rounded" />`,
+        /!\[([^\]]*)\]\(attachment:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/g,
+        (_match, alt: string, id: string) =>
+            `<img data-attachment-id="${escHtml(id)}" alt="${escHtml(alt)}" class="max-w-full rounded" />`,
     );
 
     return result;
