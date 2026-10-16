@@ -2,6 +2,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { installCSPReporter } from './utils/cspReporter';
+
+installCSPReporter();
 
 const container = document.getElementById('root');
 const root = createRoot(container!);
