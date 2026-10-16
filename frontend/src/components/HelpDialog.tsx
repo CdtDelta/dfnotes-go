@@ -502,6 +502,13 @@ const helpSections: HelpSection[] = [
                     case overall. All tasks in the template are added at once. Templates are useful for
                     standard workflows such as hard drive imaging or malware triage.
                 </p>
+                <p>
+                    Task titles and descriptions can include placeholders like <code>{'{{HOST}}'}</code> or
+                    <code>{'{{USER}}'}</code>. When you apply the template, you get a box for each placeholder,
+                    and the value replaces it in every task. For example, <code>{'[{{HOST}}] Acquire evidence'}</code> applied
+                    with <code>WS-042</code> becomes <code>[WS-042] Acquire evidence</code>. Names are
+                    case-sensitive, and single braces and square brackets are plain text.
+                </p>
                 <h3>Linking Notes to Tasks</h3>
                 <p>
                     Committed note blocks can be linked to tasks as documentation of the work performed.
@@ -766,7 +773,10 @@ const helpSections: HelpSection[] = [
                     Create and manage named task sets in the <strong>Task Templates</strong> section of
                     Settings. Each template has a name and a list of tasks (each with a title and optional
                     description). Templates created here are available in the Tasks tab via
-                    <strong> Apply Template</strong>.
+                    <strong> Apply Template</strong>. Use <code>{'{{NAME}}'}</code> in a task title or
+                    description for a value you fill in when applying the template. Saving rejects duplicate
+                    template names (ignoring case), blank task titles, and empty placeholders such as
+                    <code>{'{{}}'}</code>.
                 </p>
             </div>
         ),

@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.12.0**
+**Version 0.13.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -95,6 +95,8 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Completion timestamp recorded when a task is marked Complete
 - Tasks assigned to a specific evidence item or to the case overall
 - Task templates: named task sets configured in Settings, applied at any point during an investigation with evidence item assignment
+- Template placeholders: task titles and descriptions can include placeholders like `{{HOST}}` or `{{USER}}`. When you apply the template, you get a box for each placeholder, and the value replaces it in every task. For example, `[{{HOST}}] Acquire evidence` applied with `WS-042` becomes `[WS-042] Acquire evidence`. Names are case-sensitive (`{{host}}` and `{{HOST}}` are two different boxes). Single braces and square brackets are plain text
+- Template saves reject duplicate names (ignoring case), blank task titles, and empty placeholders such as `{{}}`
 - Many-to-many note block linking: link committed note blocks to tasks as documentation of the work done
 - Filtering by status and evidence item, combinable
 - Tasks included in case export
@@ -244,6 +246,19 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.13.0 (2026-10-16)
+
+**Task Template Placeholders**
+- Task templates can include placeholders like `{{HOST}}` or `{{USER}}` in task titles and descriptions. Apply Template shows an empty box for each placeholder, and the value replaces it in every task, so one template can be applied once per host and the tasks stay distinguishable
+- Placeholder names are case-sensitive. Single braces and square brackets are plain text. A value that looks like a placeholder is inserted as literal text
+- The Apply Template preview updates as you type, and Apply stays disabled until every box is filled
+- Applying a template is now all-or-nothing: if any task fails to save, none are added
+
+**Template Validation**
+- Saving templates now rejects duplicate template names (ignoring case and surrounding spaces), blank task titles, and empty placeholders such as `{{}}`. Previously duplicates and blank titles were accepted
+- The template editor stays open when a save is rejected, so edits are not lost
+- Existing templates.json files with these problems still load. Fix the reported template before saving changes
 
 ### v0.12.0 (2026-10-14)
 
