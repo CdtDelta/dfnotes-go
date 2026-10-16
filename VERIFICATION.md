@@ -130,6 +130,11 @@ The archive also contains the decrypted block content as markdown files in
 comment header that includes the block_id, content_hash, and previous_block_hash,
 followed by a blank line, then the plaintext content.
 
+The block .md files contain the examiner's note text verbatim, including any text
+pasted from untrusted sources. Treat them as untrusted input: view them as plain text
+or in a Markdown viewer with HTML rendering disabled, not in a browser or a renderer
+that executes HTML.
+
 ### Verification steps
 
 **Step 1: Content hash.** For each block, locate the corresponding markdown file

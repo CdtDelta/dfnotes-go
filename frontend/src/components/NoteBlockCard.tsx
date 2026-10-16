@@ -6,8 +6,7 @@ import { services, models } from '../../wailsjs/go/models';
 import TagBadge from './TagBadge';
 import TagSelector from './TagSelector';
 import IOCContextMenu from './IOCContextMenu';
-import { renderMarkdown } from '../utils/markdownToHtml';
-import { applyIOCHighlightsToHtml } from '../utils/highlightIOCs';
+import { renderNoteHtml } from '../utils/markdownToHtml';
 import type { BlockIOC, IOCStatus, IOCType } from '../utils/iocTypes';
 
 interface NoteBlockCardProps {
@@ -133,11 +132,12 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
         } catch { /* ignore */ }
     };
 
-    // Render markdown to HTML and apply IOC highlights in one string pass.
-    // dangerouslySetInnerHTML takes React's reconciler out of the subtree entirely,
-    // preventing the insertBefore crashes caused by the previous TreeWalker approach.
+    // renderNoteHtml builds and highlights the DOM in a detached document and
+    // returns it serialized. dangerouslySetInnerHTML takes React's reconciler out
+    // of the subtree entirely, preventing the insertBefore crashes caused by the
+    // previous TreeWalker approach on the live DOM.
     const highlightedHtml = useMemo(
-        () => applyIOCHighlightsToHtml(renderMarkdown(block.content, evidenceItems || []), iocs),
+        () => renderNoteHtml(block.content, evidenceItems || [], iocs),
         [block.content, evidenceItems, iocs],
     );
 

@@ -14,11 +14,15 @@ export const ATTACHMENT_PREFIX = 'attachment:';
 
 // Evidence links pass through; everything else goes through react-markdown's
 // default sanitizer, which keeps http, https, mailto, tel and relative URLs
-// and turns any other scheme (javascript:, data:, file:, ...) into an inert
-// javascript:void(0).
+// and turns any other scheme (javascript:, data:, file:, ...) into
+// javascript:void(0). That marker becomes '' so the link renders without an
+// href, matching the committed card.
+const REFUSED = 'javascript:void(0)';
+
 export function previewLinkUri(href: string): string {
     if (href.startsWith(EVIDENCE_PREFIX)) return href;
-    return uriTransformer(href);
+    const safe = uriTransformer(href);
+    return safe === REFUSED ? '' : safe;
 }
 
 // Only attachments render as images. Anything else, including remote http(s)

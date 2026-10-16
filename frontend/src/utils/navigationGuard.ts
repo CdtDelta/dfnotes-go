@@ -17,22 +17,22 @@ function linkHref(e: Event): string | null {
     return null;
 }
 
-// Compares protocol and host rather than URL.origin: the Linux and macOS app
-// origin is wails://wails, and URL.origin is "null" for non-special schemes.
-export function isAllowedNavigation(href: string, current: URL): boolean {
-    let target: URL;
+// The app has no legitimate anchor navigation: routing is HashRouter driven
+// by navigate() calls, and the only anchors come from note content. So even
+// same-origin and fragment links are blocked; an empty href would reload the
+// app (dropping to the login screen) and a fragment would change the
+// HashRouter route. Only the app's internal schemes pass.
+export function isAllowedNavigation(href: string, base: URL): boolean {
     try {
-        target = new URL(href, current);
+        return APP_SCHEMES.has(new URL(href, base).protocol);
     } catch {
         return false;
     }
-    if (APP_SCHEMES.has(target.protocol)) return true;
-    return target.protocol === current.protocol && target.host === current.host;
 }
 
 // Note content can carry attacker-controlled links. Following one replaces
-// the app with a remote page in the same window, so block anything that is
-// not the app itself. Blocked links are logged, never opened externally.
+// the app with a remote page in the same window, so block every link except
+// the internal schemes. Blocked links are logged, never opened externally.
 export function installNavigationGuard(): void {
     const guard = (e: MouseEvent) => {
         if (e.defaultPrevented) return;

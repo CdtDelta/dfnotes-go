@@ -17,38 +17,23 @@ interface MarkdownRendererProps {
     onEvidenceClick?: (evidenceItemId: string) => void;
 }
 
-// Replace [[E001]] or [[name]] with markdown links before rendering
+// Replace [[E001]] or [[name]] with markdown links before rendering. Lookup
+// and label match the committed card (markdownToHtml.ts): item_number first,
+// then name, labelled "item_number: name".
 function preprocessEvidenceLinks(
     content: string,
     evidenceItems: services.EvidenceResponse[]
 ): string {
-    return content.replace(/\[\[([^\]]+)\]\]/g, (_match, ref: string) => {
-        const trimmed = ref.trim();
-        // Match by E### label
-        const labelMatch = trimmed.match(/^E(\d+)$/i);
-        if (labelMatch) {
-            const idx = parseInt(labelMatch[1], 10) - 1;
-            // Sort by created_at ASC to match tab ordering
-            const sorted = [...evidenceItems].sort((a, b) =>
-                a.created_at.localeCompare(b.created_at)
-            );
-            if (idx >= 0 && idx < sorted.length) {
-                return `[${trimmed}](evidence://${sorted[idx].evidence_item_id})`;
-            }
-        }
-        // Match by name
-        const byName = evidenceItems.find(
-            (e) => e.name.toLowerCase() === trimmed.toLowerCase()
-        );
-        if (byName) {
-            const sorted = [...evidenceItems].sort((a, b) =>
-                a.created_at.localeCompare(b.created_at)
-            );
-            const idx = sorted.findIndex((e) => e.evidence_item_id === byName.evidence_item_id);
-            const label = `E${String(idx + 1).padStart(3, '0')}`;
-            return `[${label}: ${byName.name}](evidence://${byName.evidence_item_id})`;
-        }
-        return `[[${ref}]]`;
+    const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return content.replace(/\[\[([^\]]+)\]\]/g, (match, ref: string) => {
+        const trimmed = ref.trim().toLowerCase();
+        const item =
+            sorted.find((e) => e.item_number.toLowerCase() === trimmed) ??
+            sorted.find((e) => e.name.toLowerCase() === trimmed);
+        if (!item) return match;
+        // Escape Markdown punctuation so a name cannot break out of the link text.
+        const label = `${item.item_number}: ${item.name}`.replace(/[\\`*_{}[\]()#+\-.!|~<>&]/g, '\\$&');
+        return `[${label}](${EVIDENCE_PREFIX}${item.evidence_item_id})`;
     });
 }
 
@@ -82,7 +67,8 @@ export default function MarkdownRenderer({ content, caseId, evidenceItems, onEvi
             transformLinkUri={previewLinkUri}
             transformImageUri={previewImageUri}
             components={{
-                a: ({ href, children, ...props }) => {
+                // node is react-markdown's AST node; keep it out of the DOM.
+                a: ({ node: _node, href, children, ...props }) => {
                     if (href?.startsWith(EVIDENCE_PREFIX)) {
                         const evidenceItemId = href.replace(EVIDENCE_PREFIX, '');
                         return (
@@ -95,9 +81,10 @@ export default function MarkdownRenderer({ content, caseId, evidenceItems, onEvi
                             </button>
                         );
                     }
-                    return <a href={href} {...props}>{children}</a>;
+                    // previewLinkUri returns '' for refused URLs: render an inert anchor.
+                    return href ? <a href={href} {...props}>{children}</a> : <a {...props}>{children}</a>;
                 },
-                img: ({ src, alt, ...props }) => {
+                img: ({ node: _node, src, alt, ...props }) => {
                     if (src?.startsWith(ATTACHMENT_PREFIX)) {
                         return <AttachmentImage src={src} caseId={caseId} alt={alt} />;
                     }
