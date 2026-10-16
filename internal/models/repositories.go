@@ -69,6 +69,8 @@ type AuditLogRepository interface {
 
 type TaskRepository interface {
 	CreateTask(ctx context.Context, task Task) error
+	// CreateTasks inserts all tasks atomically: all or none.
+	CreateTasks(ctx context.Context, tasks []Task) error
 	GetTask(ctx context.Context, taskID string) (*Task, error)
 	ListTasks(ctx context.Context, caseID string) ([]Task, error)
 	UpdateTask(ctx context.Context, task Task) error

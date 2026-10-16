@@ -254,7 +254,7 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
         if (!selectedTemplate) return;
         setApplying(true);
         try {
-            await ApplyTemplate(caseId, selectedTemplate, templateEvidenceId || null);
+            await ApplyTemplate(caseId, selectedTemplate, templateEvidenceId || null, {});
             setShowTemplateModal(false);
             fetchTasks();
         } catch (err: unknown) {

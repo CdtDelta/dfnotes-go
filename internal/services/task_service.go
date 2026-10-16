@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"dfnotes-go/internal/config"
@@ -147,50 +148,62 @@ func (s *TaskService) GetLinkedTasks(ctx context.Context, blockID string) ([]mod
 	return s.taskRepo.GetLinkedTasks(ctx, blockID)
 }
 
-// ApplyTemplate reads the named template and creates all its tasks in the case.
-func (s *TaskService) ApplyTemplate(ctx context.Context, caseID string, templateName string, evidenceItemID *string) error {
+// ApplyTemplate reads the named template, fills its {{NAME}} placeholders
+// from values, and creates all its tasks in the case in one transaction.
+// A nil values map is treated as empty.
+func (s *TaskService) ApplyTemplate(ctx context.Context, caseID string, templateName string, evidenceItemID *string, values map[string]string) error {
 	if !s.session.IsAuthenticated() {
 		return errors.New("not authenticated")
+	}
+	if caseID == "" {
+		return errors.New("case_id is required")
 	}
 
 	tf, err := config.LoadTemplates()
 	if err != nil {
 		return err
 	}
-
-	var found *config.TaskTemplate
-	for i := range tf.Templates {
-		if tf.Templates[i].Name == templateName {
-			found = &tf.Templates[i]
-			break
-		}
+	found, err := tf.Find(templateName)
+	if err != nil {
+		return err
 	}
-	if found == nil {
-		return errors.New("template not found: " + templateName)
+
+	names, err := config.ExtractPlaceholders(*found)
+	if err != nil {
+		return err
+	}
+	if values == nil {
+		values = map[string]string{}
+	}
+	filled, err := config.ValidatePlaceholderValues(names, values)
+	if err != nil {
+		return err
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	userID := s.session.User().UserID
-	for _, tt := range found.Tasks {
+	tasks := make([]models.Task, 0, len(found.Tasks))
+	for i, tt := range found.Tasks {
+		title := config.SubstitutePlaceholders(tt.Title, filled)
+		if strings.TrimSpace(title) == "" {
+			return fmt.Errorf("template %q: task %d has a blank title", templateName, i+1)
+		}
 		tname := templateName
-		task := models.Task{
+		tasks = append(tasks, models.Task{
 			TaskID:         uuid.New().String(),
 			CaseID:         caseID,
 			EvidenceItemID: evidenceItemID,
 			UserID:         userID,
-			Title:          tt.Title,
-			Description:    tt.Description,
+			Title:          title,
+			Description:    config.SubstitutePlaceholders(tt.Description, filled),
 			Status:         models.TaskStatusOpen,
 			TemplateName:   &tname,
 			CreatedAt:      now,
 			UpdatedAt:      now,
 			LinkedBlocks:   []models.LinkedBlock{},
-		}
-		if err := s.taskRepo.CreateTask(ctx, task); err != nil {
-			return err
-		}
+		})
 	}
-	return nil
+	return s.taskRepo.CreateTasks(ctx, tasks)
 }
 
 // populatePreviews decrypts linked block content and fills in Preview fields.

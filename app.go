@@ -917,9 +917,24 @@ func (a *App) SaveTemplates(templates []config.TaskTemplate) error {
 	return config.SaveTemplates(&config.TemplatesFile{Templates: templates})
 }
 
-// ApplyTemplate instantiates all tasks from the named template into the case.
-func (a *App) ApplyTemplate(caseID string, templateName string, evidenceItemID *string) error {
-	return a.taskService.ApplyTemplate(a.ctx, caseID, templateName, evidenceItemID)
+// GetTemplatePlaceholders returns the {{NAME}} placeholders the named template
+// uses, in order of first appearance, so the apply dialog can ask for values.
+func (a *App) GetTemplatePlaceholders(templateName string) ([]string, error) {
+	tf, err := config.LoadTemplates()
+	if err != nil {
+		return nil, err
+	}
+	t, err := tf.Find(templateName)
+	if err != nil {
+		return nil, err
+	}
+	return config.ExtractPlaceholders(*t)
+}
+
+// ApplyTemplate instantiates all tasks from the named template into the case,
+// substituting placeholder values. All tasks are created or none are.
+func (a *App) ApplyTemplate(caseID string, templateName string, evidenceItemID *string, values map[string]string) error {
+	return a.taskService.ApplyTemplate(a.ctx, caseID, templateName, evidenceItemID, values)
 }
 
 // AttachImage opens a native file dialog for images, reads the selected file,

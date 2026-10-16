@@ -120,6 +120,9 @@ func LoadTemplates() (*TemplatesFile, error) {
 
 // SaveTemplates writes templates to ~/.config/dfnotes-go/templates.json atomically.
 func SaveTemplates(tf *TemplatesFile) error {
+	if err := ValidateTemplates(tf); err != nil {
+		return err
+	}
 	dir, err := configDir()
 	if err != nil {
 		return err

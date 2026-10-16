@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,7 +20,33 @@ func NewTaskRepo(db *DB) *TaskRepo {
 }
 
 func (r *TaskRepo) CreateTask(ctx context.Context, task models.Task) error {
-	_, err := r.db.ExecContext(ctx,
+	return insertTask(ctx, r.db, task)
+}
+
+// CreateTasks inserts all tasks in one transaction so a failure on any task
+// leaves none of them behind.
+func (r *TaskRepo) CreateTasks(ctx context.Context, tasks []models.Task) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin task tx: %w", err)
+	}
+	for i := range tasks {
+		if err := insertTask(ctx, tx, tasks[i]); err != nil {
+			err = fmt.Errorf("insert task %d of %d: %w", i+1, len(tasks), err)
+			if rbErr := tx.Rollback(); rbErr != nil {
+				return errors.Join(err, fmt.Errorf("rollback task tx: %w", rbErr))
+			}
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit task tx: %w", err)
+	}
+	return nil
+}
+
+func insertTask(ctx context.Context, ex execer, task models.Task) error {
+	_, err := ex.ExecContext(ctx,
 		`INSERT INTO tasks
 		    (task_id, case_id, evidence_item_id, user_id, title, description,
 		     status, template_name, created_at, updated_at, completed_at)
