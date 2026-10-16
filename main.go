@@ -76,6 +76,9 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
+		// Keep empty. Wails then rejects IPC from any origin except the app's
+		// own, so a remote page loaded into the window cannot call bindings.
+		BindingsAllowedOrigins: "",
 	})
 
 	if err != nil {
