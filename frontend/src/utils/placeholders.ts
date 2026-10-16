@@ -1,3 +1,6 @@
+// Keep in sync with internal/config/placeholders.go. The backend is
+// authoritative; this copy drives the preview and editor checks.
+//
 // Mirrors internal/config/placeholders.go. A placeholder is {{NAME}} with no
 // braces inside; the name is the inner text trimmed and is case-sensitive.
 const PLACEHOLDER_SOURCE = '\\{\\{([^{}]*)\\}\\}';

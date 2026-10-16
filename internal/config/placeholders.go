@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// Keep in sync with frontend/src/utils/placeholders.ts. The backend is
+// authoritative; the frontend copy drives the preview and editor checks.
+//
 // placeholderRe matches {{...}} with no braces inside. Excluding braces makes
 // "{{{HOST}}}" resolve to the inner {{HOST}} instead of a name of "{HOST".
 var placeholderRe = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
