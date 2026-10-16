@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     ListTasks, CreateTask, UpdateTaskStatus, UpdateTask, DeleteTask,
     LinkNoteToTask, UnlinkNoteFromTask, GetLinkedTasks,
-    LoadTemplates, ApplyTemplate, ListNotes, ListEvidenceNotes,
+    LoadTemplates, ApplyTemplate, GetTemplatePlaceholders, ListNotes, ListEvidenceNotes,
 } from '../../wailsjs/go/main/App';
 import { models, config, services } from '../../wailsjs/go/models';
 import ErrorMessage from './ErrorMessage';
+import { substitutePlaceholders } from '../utils/placeholders';
 
 interface TaskListTabProps {
     caseId: string;
@@ -97,6 +98,11 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
     const [selectedTemplate, setSelectedTemplate] = useState('');
     const [templateEvidenceId, setTemplateEvidenceId] = useState('');
     const [applying, setApplying] = useState(false);
+    const [placeholderNames, setPlaceholderNames] = useState<string[]>([]);
+    const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
+    const [loadingPlaceholders, setLoadingPlaceholders] = useState(false);
+    const [placeholderLoadFailed, setPlaceholderLoadFailed] = useState(false);
+    const [templateError, setTemplateError] = useState('');
 
     // Highlight
     const [highlightedTaskId, setHighlightedTaskId] = useState('');
@@ -250,15 +256,55 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
         }
     };
 
+    // Fetch placeholders whenever the selected template changes. Values always
+    // start empty, so switching templates never carries old values over.
+    useEffect(() => {
+        setPlaceholderNames([]);
+        setPlaceholderValues({});
+        setPlaceholderLoadFailed(false);
+        setTemplateError('');
+        if (!showTemplateModal || !selectedTemplate) return;
+        let cancelled = false;
+        setLoadingPlaceholders(true);
+        GetTemplatePlaceholders(selectedTemplate)
+            .then((names) => {
+                if (!cancelled) setPlaceholderNames(names || []);
+            })
+            .catch((err: unknown) => {
+                if (!cancelled) {
+                    setPlaceholderLoadFailed(true);
+                    setTemplateError(String(err));
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingPlaceholders(false);
+            });
+        return () => { cancelled = true; };
+    }, [showTemplateModal, selectedTemplate]);
+
+    const closeTemplateModal = () => {
+        setShowTemplateModal(false);
+        setPlaceholderNames([]);
+        setPlaceholderValues({});
+        setPlaceholderLoadFailed(false);
+        setTemplateError('');
+    };
+
+    const allPlaceholdersFilled = placeholderNames.every((n) => (placeholderValues[n] ?? '').trim() !== '');
+    const canApply = !!selectedTemplate && !applying && !loadingPlaceholders && !placeholderLoadFailed && allPlaceholdersFilled;
+
     const handleApplyTemplate = async () => {
-        if (!selectedTemplate) return;
+        if (!canApply) return;
         setApplying(true);
+        setTemplateError('');
+        const values: Record<string, string> = {};
+        for (const n of placeholderNames) values[n] = placeholderValues[n].trim();
         try {
-            await ApplyTemplate(caseId, selectedTemplate, templateEvidenceId || null, {});
-            setShowTemplateModal(false);
+            await ApplyTemplate(caseId, selectedTemplate, templateEvidenceId || null, values);
+            closeTemplateModal();
             fetchTasks();
         } catch (err: unknown) {
-            setError(String(err));
+            setTemplateError(String(err));
         } finally {
             setApplying(false);
         }
@@ -703,7 +749,7 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                     <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-md p-4 space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold text-gray-200">Apply Template</h3>
-                            <button onClick={() => setShowTemplateModal(false)} className="text-gray-500 hover:text-gray-300">
+                            <button onClick={closeTemplateModal} className="text-gray-500 hover:text-gray-300">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
@@ -727,6 +773,24 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                     </select>
                                 </div>
 
+                                {placeholderNames.length > 0 && (
+                                    <div className="space-y-2">
+                                        {placeholderNames.map((name) => (
+                                            <div key={name}>
+                                                <label htmlFor={`tpl-ph-${name}`} className={LABEL_CLASS}>{name}</label>
+                                                <input
+                                                    id={`tpl-ph-${name}`}
+                                                    type="text"
+                                                    value={placeholderValues[name] ?? ''}
+                                                    onChange={(e) => setPlaceholderValues((prev) => ({ ...prev, [name]: e.target.value }))}
+                                                    className={INPUT_CLASS}
+                                                    autoComplete="off"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 {selectedTemplateObj && (
                                     <div>
                                         <label className={LABEL_CLASS}>Tasks to be added</label>
@@ -734,7 +798,7 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                             {selectedTemplateObj.tasks.map((tt, i) => (
                                                 <li key={i} className="text-xs text-gray-300 flex items-start gap-1.5">
                                                     <span className="text-gray-600 mt-0.5">-</span>
-                                                    <span>{tt.title}</span>
+                                                    <span>{substitutePlaceholders(tt.title, placeholderValues)}</span>
                                                 </li>
                                             ))}
                                         </ul>
@@ -757,16 +821,18 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                     </select>
                                 </div>
 
+                                <ErrorMessage message={templateError} onDismiss={() => setTemplateError('')} />
+
                                 <div className="flex gap-2">
                                     <button
                                         onClick={handleApplyTemplate}
-                                        disabled={applying}
+                                        disabled={!canApply}
                                         className="flex-1 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded transition-colors"
                                     >
                                         {applying ? 'Applying...' : 'Apply Template'}
                                     </button>
                                     <button
-                                        onClick={() => setShowTemplateModal(false)}
+                                        onClick={closeTemplateModal}
                                         className="px-4 py-1.5 text-sm border border-gray-600 hover:border-gray-400 text-gray-400 hover:text-gray-200 rounded transition-colors"
                                     >
                                         Cancel

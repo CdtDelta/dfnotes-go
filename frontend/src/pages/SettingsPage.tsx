@@ -4,6 +4,7 @@ import { config, backup } from '../../wailsjs/go/models';
 import ErrorMessage from '../components/ErrorMessage';
 import DBLocationDialog from '../components/DBLocationDialog';
 import { useAuth } from '../context/AuthContext';
+import { hasEmptyPlaceholder } from '../utils/placeholders';
 
 const TPL_INPUT = 'w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:border-blue-500 placeholder-gray-500';
 
@@ -40,6 +41,7 @@ function TemplateEditor({
             </div>
             <div className="space-y-2">
                 <label className="block text-xs text-gray-400">Tasks</label>
+                <p className="text-xs text-gray-500">Use {'{{NAME}}'} for values you fill in when applying the template.</p>
                 {template.tasks.map((task, idx) => (
                     <div key={idx} className="flex gap-2 items-start">
                         <div className="flex-1 space-y-1">
@@ -106,6 +108,23 @@ interface TaskTemplate {
 
 function emptyTemplate(): TaskTemplate {
     return { name: '', tasks: [{ title: '', description: '' }] };
+}
+
+// Mirrors config.ValidateTemplates for the template being saved so the
+// examiner sees problems before the round trip. Task numbers count from 1.
+function validateTemplate(tpl: TaskTemplate, all: TaskTemplate[], editingIndex: number | null): string {
+    const name = tpl.name.trim();
+    if (!name) return 'Template name is required.';
+    const key = name.toLowerCase();
+    const clash = all.find((t, i) => i !== editingIndex && t.name.trim().toLowerCase() === key);
+    if (clash) return `A template named "${clash.name}" already exists. Template names must be unique (ignoring case).`;
+    for (let i = 0; i < tpl.tasks.length; i++) {
+        const task = tpl.tasks[i];
+        if (!task.title.trim()) return `Task ${i + 1} has a blank title.`;
+        if (hasEmptyPlaceholder(task.title)) return `Task ${i + 1} title contains an empty placeholder. Put a name inside the braces, e.g. {{HOST}}.`;
+        if (hasEmptyPlaceholder(task.description)) return `Task ${i + 1} description contains an empty placeholder. Put a name inside the braces, e.g. {{HOST}}.`;
+    }
+    return '';
 }
 
 interface SettingsPageProps {
@@ -224,26 +243,31 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         if (cfg) setCfg({ ...cfg, ...patch });
     };
 
-    const saveTemplates = async (updated: TaskTemplate[]) => {
+    // Returns true on success. Backend validation messages are shown as-is.
+    const saveTemplates = async (updated: TaskTemplate[]): Promise<boolean> => {
         try {
             await SaveTemplates(updated as config.TaskTemplate[]);
             setTemplates(updated);
             setTplError('');
+            return true;
         } catch (err: unknown) {
             setTplError(String(err));
+            return false;
         }
     };
 
     const handleSaveTemplate = async () => {
         if (!editingTemplate) return;
-        if (!editingTemplate.name.trim()) { setTplError('Template name is required.'); return; }
+        const validationError = validateTemplate(editingTemplate, templates, editingIndex);
+        if (validationError) { setTplError(validationError); return; }
         const updated = [...templates];
         if (editingIndex === null) {
             updated.push({ ...editingTemplate, name: editingTemplate.name.trim() });
         } else {
             updated[editingIndex] = { ...editingTemplate, name: editingTemplate.name.trim() };
         }
-        await saveTemplates(updated);
+        // Keep the editor open on failure so the examiner does not lose edits.
+        if (!(await saveTemplates(updated))) return;
         setEditingTemplate(null);
         setEditingIndex(null);
     };
