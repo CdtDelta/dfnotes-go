@@ -105,6 +105,15 @@ const helpSections: HelpSection[] = [
                     The note editor supports Markdown formatting. Use the Preview toggle to switch between
                     the raw editor and the rendered preview before committing.
                 </p>
+                <h3>Formatting</h3>
+                <ul>
+                    <li>A single line break joins the lines into one, as in standard Markdown. Put a blank
+                        line between lines, or use a bulleted list, to keep them separate.</li>
+                    <li>HTML tags typed or pasted into a note display as literal text. They are not rendered.</li>
+                    <li>Links in notes are not clickable. Evidence links such as <code>[[E001]]</code> are
+                        the exception.</li>
+                    <li>Only attached images display. Images referenced by a web address do not load.</li>
+                </ul>
                 <h3>Commit Workflow</h3>
                 <p>
                     Write your note in the editor, optionally preview it, then click <strong>Commit Note</strong>.
@@ -854,7 +863,8 @@ const helpSections: HelpSection[] = [
                 <p>
                     Clipboard paste of images is not supported on Linux. Use the
                     <strong> Attach Image</strong> button in the editor toolbar to attach images via
-                    the file dialog on any platform.
+                    the file dialog on any platform. Only attached images display in notes; an image
+                    referenced by a web address does not load.
                 </p>
                 <h3>IOC Detection in Code Spans</h3>
                 <p>

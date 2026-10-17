@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.13.0**
+**Version 0.13.5**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -38,6 +38,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 
 ### Note Taking
 - Markdown editor with live preview
+- Notes render as Markdown only: HTML tags display as literal text, links are not clickable (evidence links excepted), and only attached images display. A single line break joins lines; use a blank line or a bulleted list to keep them separate
 - Block commit workflow: write, preview, commit -- committed blocks are read-only and tamper-evident
 - Amendment workflow: original block stays intact, amendment references the original with a required reason
 - Global hash chain per case: every committed block chains to the previous one regardless of which tab it came from
@@ -171,6 +172,7 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Per-case encryption keys wrapped by the master key. The case password is a second access gate on top of the examiner login, not a separate cryptographic boundary: anyone who has the login password can unwrap every case key
 - Every successful case unlock is written to the audit log as an UNLOCK entry, recording whether a case password was used
 - All note block content encrypted with AES-256-GCM
+- Note content is untrusted: a Content-Security-Policy blocks inline script and all off-origin loads, and links in notes cannot navigate the app window away (evidence links excepted)
 
 ### Chain Verification
 - Button-triggered integrity check from the Chain Verification tab (far right of the tab bar)
@@ -246,6 +248,19 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.13.5 (2026-10-16)
+
+**Security**
+- Fixes a vulnerability present in all previous releases: raw HTML in a committed note was rendered live in the application window, where it could run script, load remote resources, or navigate the window away
+- Raw HTML in notes is no longer rendered. Tags typed or pasted into a note display as literal text, so note content can no longer run script, load remote resources, or change the app's layout
+- Production builds send a Content-Security-Policy that blocks inline script, eval, and all loads from other origins
+- Links in notes are not clickable (evidence links are the exception), so a link can no longer navigate the app window away or reload it. Blocked clicks on web links are logged to the terminal
+- Remote images in notes and in the editor Preview do not load; only attached images display
+- The editor Preview neutralizes javascript:, data: and file: links and no longer turns bare URLs and domains into links, matching the committed view
+- IOC highlighting no longer parses HTML, fixing a case where a highlight could be inserted into an attribute value
+- Exported block .md files are untrusted input; VERIFICATION.md now says to open them only as plain text or in a viewer with HTML disabled
+- All changes are display-only. No stored data, content hashes, signatures, or chain verification are affected
 
 ### v0.13.0 (2026-10-16)
 
