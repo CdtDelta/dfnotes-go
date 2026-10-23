@@ -236,11 +236,9 @@ export default function CaseDetailPage() {
     const sortedEvidenceItems = [...evidenceItems].sort((a, b) =>
         a.created_at.localeCompare(b.created_at)
     );
-    const evPrefix = caseData?.evidence_prefix ?? 'E';
-    const evDigits = caseData?.evidence_seq_digits ?? 3;
-    const evidenceTabs = sortedEvidenceItems.map((item, index) => ({
+    const evidenceTabs = sortedEvidenceItems.map((item) => ({
         id: `evidence-notes-${item.evidence_item_id}`,
-        label: `${evPrefix}${String(index + 1).padStart(evDigits, '0')}`,
+        label: item.item_number,
     }));
 
     const tabs: { id: string; label: string }[] = [

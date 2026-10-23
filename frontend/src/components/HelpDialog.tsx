@@ -203,7 +203,7 @@ const helpSections: HelpSection[] = [
                 </ul>
                 <h3>Evidence Tabs</h3>
                 <p>
-                    Each registered evidence item gets its own tab in the case tab bar (E001, E002, and so on,
+                    Each registered evidence item gets its own tab in the case tab bar (E001, E002, or your case's custom format,
                     ordered by registration date). That tab contains the note editor for item-specific notes.
                 </p>
             </div>

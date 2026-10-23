@@ -54,10 +54,9 @@ function formatInTimezone(utcTimestamp: string, tz: string): string {
 }
 
 function evidenceLabel(evidenceItemId: string, evidenceItems: services.EvidenceResponse[]): string {
-    const sorted = [...evidenceItems].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    const idx = sorted.findIndex((e) => e.evidence_item_id === evidenceItemId);
-    if (idx === -1) return evidenceItemId;
-    return `E${String(idx + 1).padStart(3, '0')} - ${sorted[idx].name}`;
+    const item = evidenceItems.find((e) => e.evidence_item_id === evidenceItemId);
+    if (!item) return evidenceItemId;
+    return `${item.item_number} - ${item.name}`;
 }
 
 const INPUT_CLASS = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
@@ -514,9 +513,9 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                             className={INPUT_CLASS}
                         >
                             <option value="">-- Case Level --</option>
-                            {sortedEvidenceItems.map((item, idx) => (
+                            {sortedEvidenceItems.map((item) => (
                                 <option key={item.evidence_item_id} value={item.evidence_item_id}>
-                                    E{String(idx + 1).padStart(3, '0')} - {item.name}
+                                    {item.item_number} - {item.name}
                                 </option>
                             ))}
                         </select>
