@@ -114,6 +114,12 @@
   border-radius: 8px;
 }
 
+/* Elements handleNavigate scrolls to; keeps them clear of the pinned case
+   header. --sticky-offset is set by CaseDetailPage. */
+.jump-target {
+  scroll-margin-top: calc(var(--sticky-offset, 0px) + 8px);
+}
+
 /* Help Dialog */
 .help-dialog {
   width: 860px;

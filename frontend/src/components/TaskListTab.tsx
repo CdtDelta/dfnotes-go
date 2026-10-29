@@ -497,7 +497,7 @@ export default function TaskListTab({ caseId, evidenceItems, onNavigate }: TaskL
                                             <tr
                                                 key={task.task_id}
                                                 id={task.task_id}
-                                                className={`hover:bg-gray-800 ${highlightedTaskId === task.task_id ? 'block-target' : ''}`}
+                                                className={`jump-target hover:bg-gray-800 ${highlightedTaskId === task.task_id ? 'block-target' : ''}`}
                                             >
                                                 <td className="py-2 pr-3 align-middle">
                                                     <select

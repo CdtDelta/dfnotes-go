@@ -148,6 +148,25 @@ export default function CaseDetailPage() {
     };
 
     const isPasswordless = caseData?.no_case_password === true;
+    const showStickyBar = pageState === 'unlocked' && caseData !== null;
+
+    // Publish the pinned bar's height so jump targets can clear it via
+    // scroll-margin-top. The height changes when evidence tabs wrap or an
+    // error appears, so it is observed rather than measured once.
+    const stickyBarRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = stickyBarRef.current;
+        if (!showStickyBar || !el) return;
+        const root = document.documentElement;
+        const observer = new ResizeObserver(() => {
+            root.style.setProperty('--sticky-offset', `${el.getBoundingClientRect().height}px`);
+        });
+        observer.observe(el);
+        return () => {
+            observer.disconnect();
+            root.style.removeProperty('--sticky-offset');
+        };
+    }, [showStickyBar]);
 
     const handleLock = async () => {
         if (!caseId) return;
@@ -253,11 +272,7 @@ export default function CaseDetailPage() {
         { id: 'verify', label: 'Chain Verification' },
     ];
 
-    return (
-        <>
-        <div className="min-h-screen p-6">
-            <div>
-                {/* Header */}
+    const header = (
                 <div className="mb-6">
                     <button
                         onClick={() => navigate('/')}
@@ -292,9 +307,49 @@ export default function CaseDetailPage() {
                         </div>
                     )}
                 </div>
+    );
 
-                {pageState !== 'unlock-failed' && (
-                    <ErrorMessage message={error} onDismiss={() => setError('')} />
+    const errorBanner = pageState !== 'unlock-failed' && (
+        <ErrorMessage message={error} onDismiss={() => setError('')} />
+    );
+
+    return (
+        <>
+        <div className="min-h-screen p-6">
+            <div>
+                {showStickyBar ? (
+                    // Negative margins pull the bar into the page padding so
+                    // scrolled content never shows above or beside it.
+                    <div
+                        ref={stickyBarRef}
+                        className="sticky top-0 z-10 -mx-6 -mt-6 px-6 pt-6 pb-3 mb-3 bg-[var(--bg-primary)] border-b border-[var(--border-color)]"
+                    >
+                        {header}
+                        {errorBanner}
+                        <nav className="flex flex-wrap gap-2">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => {
+                                        setActiveTab(tab.id);
+                                        if (tab.id === 'evidence') fetchEvidenceItems();
+                                    }}
+                                    className={`px-4 py-2 text-sm font-medium rounded border transition-colors ${
+                                        activeTab === tab.id
+                                            ? 'border-[var(--border-accent-bright)] bg-[var(--bg-accent)] text-gray-100'
+                                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-100 hover:border-[var(--border-accent-bright)]'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+                ) : (
+                    <>
+                        {header}
+                        {errorBanner}
+                    </>
                 )}
 
                 {/* Passwordless unlock failed: never fall back to the password prompt */}
@@ -349,26 +404,6 @@ export default function CaseDetailPage() {
                 {/* Unlocked State */}
                 {pageState === 'unlocked' && caseData && (
                     <>
-                        {/* Tab Bar */}
-                        <nav className="flex flex-wrap gap-2 mb-6">
-                            {tabs.map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => {
-                                        setActiveTab(tab.id);
-                                        if (tab.id === 'evidence') fetchEvidenceItems();
-                                    }}
-                                    className={`px-4 py-2 text-sm font-medium rounded border transition-colors ${
-                                        activeTab === tab.id
-                                            ? 'border-[var(--border-accent-bright)] bg-[var(--bg-accent)] text-gray-100'
-                                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-100 hover:border-[var(--border-accent-bright)]'
-                                    }`}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </nav>
-
                         {reminderPaused && (
                             <DocReminderPausedBanner onResume={() => setReminderPaused(false)} />
                         )}

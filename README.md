@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.13.6**
+**Version 0.13.7**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -248,6 +248,13 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.13.7 (2026-10-29)
+
+**Sticky Case Tab Bar**
+- The case header, error banner and tab bar now stay pinned at the top of the case view while tab content scrolls underneath
+- Jumping to a note block or task (from Chain Verification, Case Facts, IOC Summary, Tasks, or a note's task link) lands the target just below the pinned bar, even when the tabs wrap onto several rows
+- Frontend only; no migration
 
 ### v0.13.6 (2026-10-23)
 

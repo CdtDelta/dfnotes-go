@@ -246,7 +246,7 @@ export default function NoteBlockCard({ block, caseId, evidenceItems, onEvidence
     };
 
     return (
-        <div id={block.block_id} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <div id={block.block_id} className="jump-target bg-gray-800border border-gray-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-gray-500">{createdDate}</span>
                 {block.verified ? (
