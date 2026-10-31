@@ -74,8 +74,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query schema version: %v", err)
 	}
-	if version != 16 {
-		t.Fatalf("expected version 16, got %d", version)
+	if version != 17 {
+		t.Fatalf("expected version 17, got %d", version)
 	}
 }
 

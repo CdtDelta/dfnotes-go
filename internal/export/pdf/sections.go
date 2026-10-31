@@ -13,6 +13,7 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/timeline"
 	"dfnotes-go/internal/verify"
 )
 
@@ -552,12 +553,9 @@ func BuildTimelineSection(p *fpdf.Fpdf, entries []models.TimelineEntry, evidence
 		return link, startPage
 	}
 
-	// Sort by timestamp
 	sorted := make([]models.TimelineEntry, len(entries))
 	copy(sorted, entries)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Timestamp < sorted[j].Timestamp
-	})
+	timeline.Sort(sorted)
 
 	for i, e := range sorted {
 		// Page overflow check
@@ -587,7 +585,16 @@ func BuildTimelineSection(p *fpdf.Fpdf, entries []models.TimelineEntry, evidence
 		p.Cell(0, lineHeight, "-- "+source)
 		p.Ln(-1)
 
-		// Line 2: Secondary TZ if present
+		// Original input, when it was entered with a UTC offset
+		if e.TimestampAsEntered != nil {
+			p.SetFont("DejaVu", "", 9)
+			p.SetTextColor(80, 80, 80)
+			p.SetX(marginLeft)
+			p.Cell(0, lineHeight, "Entered as: "+*e.TimestampAsEntered)
+			p.Ln(-1)
+		}
+
+		// Secondary TZ if present
 		if tzDisplay != "" {
 			p.SetFont("DejaVu", "", 9)
 			p.SetTextColor(80, 80, 80)

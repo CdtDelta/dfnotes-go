@@ -521,7 +521,8 @@ func TestMigrate016UnmappedFactSourceFails(t *testing.T) {
 	}
 }
 
-var snapshotName = regexp.MustCompile(`^test\.pre-migration-v15-to-v16-\d{8}T\d{6}Z\.db$`)
+// The target version floats because Open migrates to the latest version.
+var snapshotName = regexp.MustCompile(`^test\.pre-migration-v15-to-v\d+-\d{8}T\d{6}Z\.db$`)
 
 func snapshotFiles(t *testing.T, dir string) []string {
 	t.Helper()

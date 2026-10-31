@@ -1,6 +1,6 @@
 # dfnotes-go
 
-**Version 0.13.8**
+**Version 0.14.0**
 
 A cross-platform desktop application for recording and managing case notes during digital forensic investigations. Built with Go (Wails v2) and React, dfnotes-go provides a structured, tamper-evident note-taking system with a verifiable chain of custody for all entries.
 
@@ -86,9 +86,10 @@ Beyond integrity, it handles the practical side of forensic case work:
 - Included in both the 7z export archive (case_facts.json) and the PDF export
 
 ### Timeline
-- Manual timeline entries with ISO 8601 UTC timestamp (required) and optional secondary IANA timezone display
+- Manual timeline entries with ISO 8601 timestamp (required) and optional IANA display timezone
+- Timestamps are stored in UTC with fractional seconds kept (up to nanoseconds); UTC offsets can be enabled in Settings, and the original is kept as "Entered as"
 - Searchable timezone dropdown with city name and UTC offset lookup
-- Sortable by timestamp
+- Sorted chronologically by actual time, ascending or descending
 - Source navigation links to the originating evidence tab
 
 ### Task List
@@ -141,7 +142,7 @@ Beyond integrity, it handles the practical side of forensic case work:
   - `evidence/[ITEM]/` -- metadata.json (includes current_location and archive_location) and block markdown files per evidence item
   - `ioc_summary.json` -- case-wide indicators with nested occurrences, chain sequence numbers and evidence item numbers (format_version 2)
   - `case_facts.json` -- all case facts with type, description, value, and source references (format_version 2; `source_ioc_id` refers to an indicator)
-  - `timeline.json` -- all timeline entries
+  - `timeline.json` -- all timeline entries (timestamps in UTC; `timestamp_as_entered` holds the original when entered with a UTC offset)
   - `tasks.json` -- all tasks with status, evidence item, and linked block references
   - `chain_verification.json` -- full hash chain with per-block verification results (content hash, previous-block hash, commit timestamp, block id, base64 signature, verdict, and detail) and top-level `chain_intact` flag; contains all fields needed for independent re-verification
 - JSON files carry a per-file `format_version`; a file without one is version 1
@@ -248,6 +249,16 @@ build/bin/dfnotes-go
 ---
 
 ## Changelog
+
+### v0.14.0 (2026-10-31)
+
+**Timeline Timestamp Normalization**
+- Timeline entries now sort by actual time, including fractional seconds and UTC offsets, in the Timeline tab and the PDF
+- Timestamps are stored in canonical UTC; trailing fractional zeros are trimmed and up to 9 fractional digits are kept
+- Timestamp input is stricter: the format must match `2026-10-30T15:00:05Z` exactly, with the validation result shown as you type and a `Stored as:` preview when the stored form differs
+- New setting, off by default: Allow UTC offsets in timeline timestamps. When on, offsets are converted to UTC and the original is shown as `Entered as:` in the Timeline tab and the PDF, and exported as `timestamp_as_entered` in `timeline.json`
+- Existing entries are converted on upgrade (migration 017), with a pre-migration snapshot. Entries that fail the stricter format are left unchanged and must have their timestamp corrected before they can be edited
+- Timeline entries remain outside the signed chain; note blocks, hashes and signatures are not affected
 
 ### v0.13.8 (2026-10-31)
 

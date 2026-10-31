@@ -479,7 +479,7 @@ case_metadata.json  - Case metadata in plaintext JSON.
 master_notes/       - Committed note blocks from Master Notes tab (markdown).
 evidence/           - Per-evidence-item metadata and note blocks.
 ioc_summary.json    - Case-wide IOC indicators with status and every occurrence (format_version 2).
-timeline.json       - All timeline entries.
+timeline.json       - All timeline entries (timestamps in UTC; timestamp_as_entered holds the original when entered with a UTC offset).
 tasks.json          - All investigation tasks with status and linked block references.
 case_facts.json     - All case facts (format_version 2; source_ioc_id refers to an indicator).
 chain_verification.json - Full hash chain data for independent verification.

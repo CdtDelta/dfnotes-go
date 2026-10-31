@@ -23,6 +23,7 @@ import (
 	"dfnotes-go/internal/ioc"
 	"dfnotes-go/internal/models"
 	"dfnotes-go/internal/services"
+	"dfnotes-go/internal/timeline"
 	"dfnotes-go/internal/timer"
 	"dfnotes-go/internal/verify"
 	"dfnotes-go/internal/version"
@@ -120,7 +121,7 @@ func (a *App) openDatabase(path string) error {
 	a.tagService = services.NewTagService(tagRepo, a.session)
 	a.caseFactService = services.NewCaseFactService(caseFactRepo, auditRepo, a.session)
 	a.iocService = ioc.NewIOCService(indicatorRepo, a.session)
-	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService)
+	a.timelineService = services.NewTimelineService(timelineRepo, a.session, a.timerService, func() bool { return a.cfg.TimelineAllowOffsets })
 	a.taskService = services.NewTaskService(taskRepo, a.noteService, a.session)
 	a.noteBlockRepo = noteBlockRepo
 	return nil
@@ -517,9 +518,17 @@ func (a *App) GetFactTypes() []string {
 	return models.PredefinedFactTypes
 }
 
-// GetTimelineEntries returns all timeline entries for a case, sorted by timestamp ASC.
+// GetTimelineEntries returns all timeline entries for a case, in the order set by timeline.Sort.
 func (a *App) GetTimelineEntries(caseID string) ([]models.TimelineEntry, error) {
 	return a.timelineService.GetTimelineEntries(a.ctx, caseID)
+}
+
+// NormalizeTimelineTimestamp returns the canonical form of a timestamp for the
+// form preview, using the current setting. It touches no data, so it does not
+// require authentication.
+func (a *App) NormalizeTimelineTimestamp(input string) (string, error) {
+	canonical, _, err := timeline.Normalize(input, a.cfg.TimelineAllowOffsets)
+	return canonical, err
 }
 
 // CreateTimelineEntry adds a new timeline entry to a case.

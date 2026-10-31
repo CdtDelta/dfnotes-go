@@ -467,11 +467,15 @@ const helpSections: HelpSection[] = [
                     Click <strong>Add Entry</strong> and complete the form:
                 </p>
                 <ul>
-                    <li><strong>Timestamp</strong> -- required. Must be ISO 8601 format in UTC
-                        (e.g. <code>2025-03-15T14:30:00Z</code>)</li>
+                    <li><strong>Timestamp</strong> -- required. ISO 8601 format, in UTC by default
+                        (e.g. <code>2025-03-15T14:30:00Z</code>). Fractional seconds are kept, up to
+                        nanoseconds (9 digits). To enter offsets such as <code>-05:00</code>, turn on
+                        <strong> Allow UTC offsets in timeline timestamps</strong> in Settings. Timestamps
+                        are always stored in UTC; when you enter an offset, the original is kept and
+                        shown as "Entered as".</li>
                     <li><strong>Event Description</strong> -- required. A brief description of the event.</li>
                     <li><strong>Investigator Notes</strong> -- optional. Additional context or observations.</li>
-                    <li><strong>Secondary Timezone</strong> -- optional. An IANA timezone name
+                    <li><strong>Display Timezone</strong> -- optional. An IANA timezone name
                         (e.g. <code>America/Chicago</code> or <code>Europe/London</code>). The timestamp
                         is also displayed converted to this timezone. Search by city name or UTC offset
                         in the timezone picker.</li>
@@ -480,8 +484,8 @@ const helpSections: HelpSection[] = [
                 </ul>
                 <h3>Sorting</h3>
                 <p>
-                    Entries are sorted by timestamp, oldest first by default. Click the Timestamp column
-                    header to reverse the sort order.
+                    Entries are sorted chronologically by actual time, including fractional seconds,
+                    oldest first by default. Click the Timestamp column header to reverse the sort order.
                 </p>
             </div>
         ),

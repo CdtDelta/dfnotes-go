@@ -18,6 +18,7 @@ type Config struct {
 	LastBackupStatus           string `json:"last_backup_status"` // "success", "failed", or ""
 	DocReminderEnabled         bool   `json:"doc_reminder_enabled"`
 	DocReminderIntervalMinutes int    `json:"doc_reminder_interval_minutes"`
+	TimelineAllowOffsets       bool   `json:"timeline_allow_offsets"` // false: timeline timestamps must be UTC
 }
 
 func DefaultConfig() Config {

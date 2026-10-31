@@ -3,9 +3,11 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"dfnotes-go/internal/models"
+	"dfnotes-go/internal/timeline"
 	"dfnotes-go/internal/timer"
 
 	"github.com/google/uuid"
@@ -15,13 +17,15 @@ type TimelineService struct {
 	timelineRepo models.TimelineRepository
 	session      *Session
 	timerService timer.Service
+	allowOffsets func() bool
 }
 
-func NewTimelineService(timelineRepo models.TimelineRepository, session *Session, timerService timer.Service) *TimelineService {
+func NewTimelineService(timelineRepo models.TimelineRepository, session *Session, timerService timer.Service, allowOffsets func() bool) *TimelineService {
 	return &TimelineService{
 		timelineRepo: timelineRepo,
 		session:      session,
 		timerService: timerService,
+		allowOffsets: allowOffsets,
 	}
 }
 
@@ -42,22 +46,24 @@ func (s *TimelineService) CreateTimelineEntry(ctx context.Context, req models.Cr
 	if req.EventDescription == "" {
 		return nil, errors.New("event_description is required")
 	}
-	if _, err := time.Parse(time.RFC3339, req.Timestamp); err != nil {
-		return nil, errors.New("timestamp must be a valid ISO 8601 date-time string")
+	canonical, asEntered, err := timeline.Normalize(req.Timestamp, s.allowOffsets())
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	entry := &models.TimelineEntry{
-		EntryID:           uuid.New().String(),
-		CaseID:            req.CaseID,
-		EvidenceItemID:    req.EvidenceItemID,
-		Timestamp:         req.Timestamp,
-		DisplayTimezone:   req.DisplayTimezone,
-		EventDescription:  req.EventDescription,
-		InvestigatorNotes: req.InvestigatorNotes,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		UserID:            s.session.User().UserID,
+		EntryID:            uuid.New().String(),
+		CaseID:             req.CaseID,
+		EvidenceItemID:     req.EvidenceItemID,
+		Timestamp:          canonical,
+		TimestampAsEntered: asEntered,
+		DisplayTimezone:    req.DisplayTimezone,
+		EventDescription:   req.EventDescription,
+		InvestigatorNotes:  req.InvestigatorNotes,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		UserID:             s.session.User().UserID,
 	}
 
 	if err := s.timelineRepo.Create(ctx, entry); err != nil {
@@ -77,8 +83,9 @@ func (s *TimelineService) UpdateTimelineEntry(ctx context.Context, req models.Up
 	if req.EventDescription == "" {
 		return nil, errors.New("event_description is required")
 	}
-	if _, err := time.Parse(time.RFC3339, req.Timestamp); err != nil {
-		return nil, errors.New("timestamp must be a valid ISO 8601 date-time string")
+	canonical, asEntered, err := timeline.Normalize(req.Timestamp, s.allowOffsets())
+	if err != nil {
+		return nil, err
 	}
 
 	entry, err := s.timelineRepo.GetByID(ctx, req.EntryID)
@@ -86,7 +93,12 @@ func (s *TimelineService) UpdateTimelineEntry(ctx context.Context, req models.Up
 		return nil, err
 	}
 
-	entry.Timestamp = req.Timestamp
+	// An unchanged timestamp comes back from the form as the stored canonical
+	// value, so it must not clear the original offset the examiner entered.
+	if strings.TrimSpace(req.Timestamp) != entry.Timestamp {
+		entry.TimestampAsEntered = asEntered
+	}
+	entry.Timestamp = canonical
 	entry.DisplayTimezone = req.DisplayTimezone
 	entry.EventDescription = req.EventDescription
 	entry.InvestigatorNotes = req.InvestigatorNotes

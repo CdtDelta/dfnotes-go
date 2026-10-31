@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { GetConfig, SaveConfig, GetDBPath, ChooseDirectory, GetBackupStatus, TriggerBackupNow, LoadTemplates, SaveTemplates, GetVersion, GetDocReminderSettings, SaveDocReminderSettings } from '../../wailsjs/go/main/App';
 import { config, backup } from '../../wailsjs/go/models';
+import { CONFIG_SAVED_EVENT } from '../utils/configEvents';
 import ErrorMessage from '../components/ErrorMessage';
 import DBLocationDialog from '../components/DBLocationDialog';
 import { useAuth } from '../context/AuthContext';
@@ -162,7 +163,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         cfg.backup_enabled !== initialCfg.backup_enabled ||
         cfg.backup_dest_path !== initialCfg.backup_dest_path ||
         cfg.backup_interval_hours !== initialCfg.backup_interval_hours ||
-        cfg.backup_keep_count !== initialCfg.backup_keep_count
+        cfg.backup_keep_count !== initialCfg.backup_keep_count ||
+        cfg.timeline_allow_offsets !== initialCfg.timeline_allow_offsets
     );
 
     const isReminderDirty = reminderEnabled !== initialReminderEnabled || reminderInterval !== initialReminderInterval;
@@ -208,6 +210,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         try {
             await SaveConfig(cfg);
             setInitialCfg(cfg);
+            window.dispatchEvent(new Event(CONFIG_SAVED_EVENT));
             setSavedMsg('Saved');
             setTimeout(() => setSavedMsg(''), 2000);
         } catch (err: unknown) {
@@ -563,6 +566,25 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                                     </span>
                                 )}
                             </div>
+                        </div>
+                    </section>
+
+                    {/* Timeline */}
+                    <section className="mb-8">
+                        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Timeline</h2>
+                        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={cfg.timeline_allow_offsets}
+                                    onChange={(e) => updateCfg({ timeline_allow_offsets: e.target.checked })}
+                                    className="rounded"
+                                />
+                                <span className="text-sm text-gray-200">Allow UTC offsets in timeline timestamps</span>
+                            </label>
+                            <p className="mt-2 text-xs text-gray-500">
+                                Off: timestamps must be entered in UTC (ending in Z). On: offsets such as -05:00 are accepted, converted to UTC, and the original is kept as 'Entered as'.
+                            </p>
                         </div>
                     </section>
 

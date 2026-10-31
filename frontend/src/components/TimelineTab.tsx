@@ -4,9 +4,12 @@ import {
     CreateTimelineEntry,
     UpdateTimelineEntry,
     DeleteTimelineEntry,
+    GetConfig,
+    NormalizeTimelineTimestamp,
 } from '../../wailsjs/go/main/App';
 import { models, services } from '../../wailsjs/go/models';
 import ErrorMessage from './ErrorMessage';
+import { CONFIG_SAVED_EVENT } from '../utils/configEvents';
 
 interface TimelineTabProps {
     caseId: string;
@@ -57,6 +60,63 @@ function evidenceLabel(evidenceItemId: string, evidenceItems: services.EvidenceR
     const item = evidenceItems.find((e) => e.evidence_item_id === evidenceItemId);
     if (!item) return evidenceItemId;
     return `${item.item_number} - ${item.name}`;
+}
+
+const TIMESTAMP_DEBOUNCE_MS = 250;
+
+interface TimestampCheck {
+    canonical: string;
+    error: string;
+}
+
+const NO_CHECK: TimestampCheck = { canonical: '', error: '' };
+
+// useTimestampCheck validates through the backend so the form and the save path
+// cannot disagree. A new resetKey checks at once instead of waiting out the
+// debounce, so opening an edit form shows a problem before any typing.
+// allowOffsets is a dependency because the same value can change verdict when
+// the setting does.
+function useTimestampCheck(value: string, resetKey: string | null, allowOffsets: boolean): TimestampCheck {
+    const [check, setCheck] = useState<TimestampCheck>(NO_CHECK);
+    const lastResetKey = useRef<string | null>(null);
+
+    useEffect(() => {
+        const isReset = lastResetKey.current !== resetKey;
+        lastResetKey.current = resetKey;
+        if (isReset) setCheck(NO_CHECK);
+        if (resetKey === null) return;
+
+        // A slower response for an older value must not overwrite a newer one.
+        let cancelled = false;
+        const timer = setTimeout(() => {
+            NormalizeTimelineTimestamp(value)
+                .then((canonical) => { if (!cancelled) setCheck({ canonical, error: '' }); })
+                .catch((err: unknown) => {
+                    if (!cancelled) setCheck({ canonical: '', error: err instanceof Error ? err.message : String(err) });
+                });
+        }, isReset ? 0 : TIMESTAMP_DEBOUNCE_MS);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [value, resetKey, allowOffsets]);
+
+    return check;
+}
+
+function TimestampFeedback({ input, check }: { input: string; check: TimestampCheck }) {
+    if (check.error) {
+        return <p className="mt-1 text-xs text-[var(--text-error)]">{check.error}</p>;
+    }
+    if (check.canonical && check.canonical !== input) {
+        return (
+            <p className="mt-1 font-mono text-xs text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+                Stored as: {check.canonical}
+            </p>
+        );
+    }
+    return null;
 }
 
 const INPUT_CLASS = 'w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600';
@@ -347,6 +407,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [allowOffsets, setAllowOffsets] = useState(false);
 
     const [form, setForm] = useState<EntryForm>(emptyForm);
     const [formError, setFormError] = useState('');
@@ -358,6 +419,11 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
     const [saving, setSaving] = useState(false);
 
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+    const addCheck = useTimestampCheck(form.timestamp, 'add', allowOffsets);
+    const editCheck = useTimestampCheck(editForm.timestamp, editingId, allowOffsets);
+
+    const timestampLabel = allowOffsets ? 'Timestamp (ISO 8601, UTC or with offset)' : 'Timestamp (ISO 8601 UTC)';
 
     const sortedEvidenceItems = [...evidenceItems].sort((a, b) =>
         a.created_at.localeCompare(b.created_at)
@@ -375,10 +441,19 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
         fetchEntries();
     }, [fetchEntries]);
 
-    const displayed = [...entries].sort((a, b) => {
-        const cmp = a.timestamp.localeCompare(b.timestamp);
-        return sortDir === 'asc' ? cmp : -cmp;
-    });
+    useEffect(() => {
+        const loadSetting = () => {
+            GetConfig()
+                .then((cfg) => setAllowOffsets(cfg.timeline_allow_offsets))
+                .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+        };
+        loadSetting();
+        window.addEventListener(CONFIG_SAVED_EVENT, loadSetting);
+        return () => window.removeEventListener(CONFIG_SAVED_EVENT, loadSetting);
+    }, []);
+
+    // The backend owns the order (timeline.Sort); never re-sort timestamps here.
+    const displayed = sortDir === 'asc' ? entries : [...entries].reverse();
 
     const handleAdd = async () => {
         setFormError('');
@@ -386,10 +461,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
             setFormError('Event description is required.');
             return;
         }
-        if (isNaN(Date.parse(form.timestamp))) {
-            setFormError('Timestamp must be a valid ISO 8601 date-time string.');
-            return;
-        }
+        if (addCheck.error) return;
         setSubmitting(true);
         try {
             await CreateTimelineEntry({
@@ -428,10 +500,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
             setEditError('Event description is required.');
             return;
         }
-        if (isNaN(Date.parse(editForm.timestamp))) {
-            setEditError('Timestamp must be a valid ISO 8601 date-time string.');
-            return;
-        }
+        if (editCheck.error) return;
         setSaving(true);
         try {
             await UpdateTimelineEntry({
@@ -467,7 +536,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                 <h3 className="text-sm font-medium text-gray-300 mb-4">Add Timeline Entry</h3>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                        <label className={LABEL_CLASS}>Timestamp (ISO 8601 UTC)</label>
+                        <label className={LABEL_CLASS}>{timestampLabel}</label>
                         <input
                             type="text"
                             value={form.timestamp}
@@ -475,6 +544,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                             placeholder="2026-05-14T22:00:00Z"
                             className={INPUT_CLASS}
                         />
+                        <TimestampFeedback input={form.timestamp} check={addCheck} />
                     </div>
                     <div>
                         <label className={LABEL_CLASS}>Display Timezone (optional)</label>
@@ -523,7 +593,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                     <div className="flex items-end">
                         <button
                             onClick={handleAdd}
-                            disabled={submitting}
+                            disabled={submitting || !!addCheck.error}
                             className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white py-1.5 px-4 rounded text-sm transition-colors"
                         >
                             {submitting ? 'Adding...' : 'Add Entry'}
@@ -553,9 +623,14 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                     <p className="text-gray-500 text-sm text-center py-8">No timeline entries yet.</p>
                 ) : (
                     <table className="w-full table-fixed text-sm">
+                        {/* table-fixed ignores min-width, so the width goes on a col. The col carries
+                            the cell font so ch measures the 30-character canonical timestamp. */}
+                        <colgroup>
+                            <col className="font-mono text-xs w-[calc(30ch+1rem)]" />
+                        </colgroup>
                         <thead>
                             <tr className="text-left border-b border-gray-700">
-                                <th className="pb-2 pr-4 w-48">
+                                <th className="pb-2 pr-4">
                                     <button
                                         onClick={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
                                         className="flex items-center gap-1 font-medium text-gray-400 hover:text-gray-200 transition-colors"
@@ -579,13 +654,14 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                                                 <div className="space-y-2">
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <div>
-                                                            <label className={LABEL_CLASS}>Timestamp</label>
+                                                            <label className={LABEL_CLASS}>{timestampLabel}</label>
                                                             <input
                                                                 type="text"
                                                                 value={editForm.timestamp}
                                                                 onChange={(e) => setEditForm((f) => ({ ...f, timestamp: e.target.value }))}
                                                                 className={INPUT_CLASS}
                                                             />
+                                                            <TimestampFeedback input={editForm.timestamp} check={editCheck} />
                                                         </div>
                                                         <div>
                                                             <label className={LABEL_CLASS}>Display Timezone</label>
@@ -620,7 +696,7 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                                                     <div className="flex gap-2">
                                                         <button
                                                             onClick={handleSaveEdit}
-                                                            disabled={saving}
+                                                            disabled={saving || !!editCheck.error}
                                                             className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white px-3 py-1 rounded transition-colors"
                                                         >
                                                             {saving ? 'Saving...' : 'Save'}
@@ -672,6 +748,12 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                                             <div className="font-mono text-xs text-gray-200 whitespace-nowrap">
                                                 {entry.timestamp}
                                             </div>
+                                            {entry.timestamp_as_entered && (
+                                                <div className="font-mono text-xs text-[var(--text-muted)] mt-0.5">
+                                                    <div>Entered as:</div>
+                                                    <div className="[overflow-wrap:anywhere]">{entry.timestamp_as_entered}</div>
+                                                </div>
+                                            )}
                                             {localTime && (
                                                 <div className="font-mono text-xs text-gray-500 mt-0.5 whitespace-nowrap">
                                                     {localTime}

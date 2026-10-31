@@ -22,6 +22,7 @@ var migrations embed.FS
 // normalizing values with ioc.MatchKey.
 var goMigrations = map[int]func(tx *sql.Tx) error{
 	16: migrate016IOCIndicators,
+	17: migrate017TimelineTimestamps,
 }
 
 type DB struct {
