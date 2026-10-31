@@ -552,173 +552,171 @@ export default function TimelineTab({ caseId, evidenceItems, onNavigate }: Timel
                 ) : entries.length === 0 ? (
                     <p className="text-gray-500 text-sm text-center py-8">No timeline entries yet.</p>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="text-left border-b border-gray-700">
-                                    <th className="pb-2 pr-4 w-48">
-                                        <button
-                                            onClick={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
-                                            className="flex items-center gap-1 font-medium text-gray-400 hover:text-gray-200 transition-colors"
-                                        >
-                                            Timestamp
-                                            <span className="text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>
-                                        </button>
-                                    </th>
-                                    <th className="pb-2 pr-4 font-medium text-gray-400">Event Description</th>
-                                    <th className="pb-2 pr-4 font-medium text-gray-400">Investigator Notes</th>
-                                    <th className="pb-2 pr-4 font-medium text-gray-400">Source</th>
-                                    <th className="pb-2 pr-4 font-medium text-gray-400 w-24"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-800">
-                                {displayed.map((entry) => {
-                                    if (editingId === entry.entry_id) {
-                                        return (
-                                            <tr key={entry.entry_id} className="bg-gray-800">
-                                                <td className="py-2 pr-4 align-top" colSpan={5}>
-                                                    <div className="space-y-2">
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <div>
-                                                                <label className={LABEL_CLASS}>Timestamp</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={editForm.timestamp}
-                                                                    onChange={(e) => setEditForm((f) => ({ ...f, timestamp: e.target.value }))}
-                                                                    className={INPUT_CLASS}
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className={LABEL_CLASS}>Display Timezone</label>
-                                                                <TimezoneSelect
-                                                                    value={editForm.displayTimezone}
-                                                                    onChange={(v) => setEditForm((f) => ({ ...f, displayTimezone: v }))}
-                                                                    className={INPUT_CLASS}
-                                                                />
-                                                            </div>
-                                                        </div>
+                    <table className="w-full table-fixed text-sm">
+                        <thead>
+                            <tr className="text-left border-b border-gray-700">
+                                <th className="pb-2 pr-4 w-48">
+                                    <button
+                                        onClick={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
+                                        className="flex items-center gap-1 font-medium text-gray-400 hover:text-gray-200 transition-colors"
+                                    >
+                                        Timestamp
+                                        <span className="text-xs">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                                    </button>
+                                </th>
+                                <th className="pb-2 pr-4 font-medium text-gray-400">Event Description</th>
+                                <th className="pb-2 pr-4 font-medium text-gray-400">Investigator Notes</th>
+                                <th className="pb-2 pr-4 font-medium text-gray-400 w-32">Source</th>
+                                <th className="pb-2 pr-4 font-medium text-gray-400 w-24"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {displayed.map((entry) => {
+                                if (editingId === entry.entry_id) {
+                                    return (
+                                        <tr key={entry.entry_id} className="bg-gray-800">
+                                            <td className="py-2 pr-4 align-top" colSpan={5}>
+                                                <div className="space-y-2">
+                                                    <div className="grid grid-cols-2 gap-2">
                                                         <div>
-                                                            <label className={LABEL_CLASS}>Event Description</label>
+                                                            <label className={LABEL_CLASS}>Timestamp</label>
                                                             <input
                                                                 type="text"
-                                                                value={editForm.eventDescription}
-                                                                onChange={(e) => setEditForm((f) => ({ ...f, eventDescription: e.target.value }))}
+                                                                value={editForm.timestamp}
+                                                                onChange={(e) => setEditForm((f) => ({ ...f, timestamp: e.target.value }))}
                                                                 className={INPUT_CLASS}
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className={LABEL_CLASS}>Investigator Notes</label>
-                                                            <textarea
-                                                                rows={3}
-                                                                value={editForm.investigatorNotes}
-                                                                onChange={(e) => setEditForm((f) => ({ ...f, investigatorNotes: e.target.value }))}
-                                                                className={INPUT_CLASS + ' resize-none'}
+                                                            <label className={LABEL_CLASS}>Display Timezone</label>
+                                                            <TimezoneSelect
+                                                                value={editForm.displayTimezone}
+                                                                onChange={(v) => setEditForm((f) => ({ ...f, displayTimezone: v }))}
+                                                                className={INPUT_CLASS}
                                                             />
                                                         </div>
-                                                        {editError && (
-                                                            <p className="text-xs text-red-400">{editError}</p>
-                                                        )}
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={handleSaveEdit}
-                                                                disabled={saving}
-                                                                className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white px-3 py-1 rounded transition-colors"
-                                                            >
-                                                                {saving ? 'Saving...' : 'Save'}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => setEditingId(null)}
-                                                                className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        </div>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-
-                                    if (confirmDelete === entry.entry_id) {
-                                        return (
-                                            <tr key={entry.entry_id} className="bg-red-900/20">
-                                                <td colSpan={5} className="py-3 px-2">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-sm text-red-300">Delete this timeline entry? This cannot be undone.</span>
+                                                    <div>
+                                                        <label className={LABEL_CLASS}>Event Description</label>
+                                                        <input
+                                                            type="text"
+                                                            value={editForm.eventDescription}
+                                                            onChange={(e) => setEditForm((f) => ({ ...f, eventDescription: e.target.value }))}
+                                                            className={INPUT_CLASS}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className={LABEL_CLASS}>Investigator Notes</label>
+                                                        <textarea
+                                                            rows={3}
+                                                            value={editForm.investigatorNotes}
+                                                            onChange={(e) => setEditForm((f) => ({ ...f, investigatorNotes: e.target.value }))}
+                                                            className={INPUT_CLASS + ' resize-none'}
+                                                        />
+                                                    </div>
+                                                    {editError && (
+                                                        <p className="text-xs text-red-400">{editError}</p>
+                                                    )}
+                                                    <div className="flex gap-2">
                                                         <button
-                                                            onClick={() => handleDelete(entry.entry_id)}
-                                                            className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
+                                                            onClick={handleSaveEdit}
+                                                            disabled={saving}
+                                                            className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white px-3 py-1 rounded transition-colors"
                                                         >
-                                                            Delete
+                                                            {saving ? 'Saving...' : 'Save'}
                                                         </button>
                                                         <button
-                                                            onClick={() => setConfirmDelete(null)}
+                                                            onClick={() => setEditingId(null)}
                                                             className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors"
                                                         >
                                                             Cancel
                                                         </button>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    }
-
-                                    const localTime = entry.display_timezone
-                                        ? formatInTimezone(entry.timestamp, entry.display_timezone)
-                                        : '';
-
-                                    return (
-                                        <tr key={entry.entry_id} className="hover:bg-gray-800">
-                                            <td className="py-2 pr-4 align-top">
-                                                <div className="font-mono text-xs text-gray-200 whitespace-nowrap">
-                                                    {entry.timestamp}
                                                 </div>
-                                                {localTime && (
-                                                    <div className="font-mono text-xs text-gray-500 mt-0.5 whitespace-nowrap">
-                                                        {localTime}
-                                                    </div>
-                                                )}
                                             </td>
-                                            <td className="py-2 pr-4 align-top text-gray-200 text-sm">
-                                                {entry.event_description}
-                                            </td>
-                                            <td className="py-2 pr-4 align-top text-gray-400 text-sm whitespace-pre-wrap">
-                                                {entry.investigator_notes}
-                                            </td>
-                                            <td className="py-2 pr-4 align-top text-xs">
-                                                {entry.evidence_item_id ? (
+                                        </tr>
+                                    );
+                                }
+
+                                if (confirmDelete === entry.entry_id) {
+                                    return (
+                                        <tr key={entry.entry_id} className="bg-red-900/20">
+                                            <td colSpan={5} className="py-3 px-2">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-sm text-red-300">Delete this timeline entry? This cannot be undone.</span>
                                                     <button
-                                                        onClick={() => onNavigate?.(`evidence-notes-${entry.evidence_item_id}`)}
-                                                        className="text-blue-400 hover:text-blue-300 underline transition-colors"
-                                                    >
-                                                        {evidenceLabel(entry.evidence_item_id, evidenceItems)}
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-gray-600">Case Level</span>
-                                                )}
-                                            </td>
-                                            <td className="py-2 align-top">
-                                                <div className="flex gap-3">
-                                                    <button
-                                                        onClick={() => startEdit(entry)}
-                                                        className="text-xs text-gray-400 hover:text-blue-400 transition-colors"
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setConfirmDelete(entry.entry_id)}
-                                                        className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+                                                        onClick={() => handleDelete(entry.entry_id)}
+                                                        className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
                                                     >
                                                         Delete
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConfirmDelete(null)}
+                                                        className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1 rounded border border-gray-600 hover:border-gray-400 transition-colors"
+                                                    >
+                                                        Cancel
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
                                     );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                                }
+
+                                const localTime = entry.display_timezone
+                                    ? formatInTimezone(entry.timestamp, entry.display_timezone)
+                                    : '';
+
+                                return (
+                                    <tr key={entry.entry_id} className="hover:bg-gray-800">
+                                        <td className="py-2 pr-4 align-top">
+                                            <div className="font-mono text-xs text-gray-200 whitespace-nowrap">
+                                                {entry.timestamp}
+                                            </div>
+                                            {localTime && (
+                                                <div className="font-mono text-xs text-gray-500 mt-0.5 whitespace-nowrap">
+                                                    {localTime}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="py-2 pr-4 align-top text-gray-200 text-sm break-words [overflow-wrap:anywhere]">
+                                            {entry.event_description}
+                                        </td>
+                                        <td className="py-2 pr-4 align-top text-gray-400 text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                            {entry.investigator_notes}
+                                        </td>
+                                        <td className="py-2 pr-4 align-top text-xs break-words [overflow-wrap:anywhere]">
+                                            {entry.evidence_item_id ? (
+                                                <button
+                                                    onClick={() => onNavigate?.(`evidence-notes-${entry.evidence_item_id}`)}
+                                                    className="text-blue-400 hover:text-blue-300 underline transition-colors"
+                                                >
+                                                    {evidenceLabel(entry.evidence_item_id, evidenceItems)}
+                                                </button>
+                                            ) : (
+                                                <span className="text-gray-600">Case Level</span>
+                                            )}
+                                        </td>
+                                        <td className="py-2 align-top">
+                                            <div className="flex gap-3">
+                                                <button
+                                                    onClick={() => startEdit(entry)}
+                                                    className="text-xs text-gray-400 hover:text-blue-400 transition-colors"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfirmDelete(entry.entry_id)}
+                                                    className="text-xs text-gray-400 hover:text-red-400 transition-colors"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
                 )}
             </div>
         </div>
